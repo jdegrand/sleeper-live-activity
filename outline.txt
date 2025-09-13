@@ -1,0 +1,84 @@
+Sleeper Fantasy iOS Live Activity Design Document
+
+⸻
+
+Context & Requirements
+
+This document outlines the design of an iOS app with Live Activity integration for Sleeper Fantasy Football.
+The goal is to display live scoring information on the Lock Screen and Dynamic Island, only when the user’s
+starting players are actively playing in an NFL game.
+
+Key requirements:
+	•	Live Activity starts only if at least one starting player has a game currently in progress.
+	•	Live Activity updates in near real-time with points, team info, and active players.
+	•	Live Activity persists until 30 minutes after the last starter finishes playing, unless another starter is still active.
+	•	The app allows the user to set their Sleeper User ID and League ID once, and all data is fetched automatically.
+
+⸻
+
+API Calls & Frequency
+
+API Endpoint	Purpose	Frequency
+GET /v1/user/{username}	Fetch user info → league IDs	Once per install or login
+GET /v1/user/{user_id}/leagues/nfl/{season}	Get all leagues for user	Once per season
+GET /v1/league/{league_id}/rosters	Fetch rosters to identify user’s team_id	Once per season
+GET /v1/league/{league_id}/matchups/{week}	Fetch weekly matchups with points	Every 1–5 minutes (only when Live Activity running)
+GET /v1/players/nfl	Fetch all players (player_id → team)	Once per season (cache locally)
+GET /v1/state/nfl	Fetch current NFL week and game statuses	Hourly on game days, more frequent if active players
+
+
+⸻
+
+Timeline & Lifecycle
+
+Timeline of Live Activity lifecycle (example for Sunday games):
+	1.	Pre-Game (morning):
+	•	App checks user’s starters and maps them to NFL games.
+	•	No Live Activity shown.
+	2.	Game Start (starter’s game enters ‘in progress’):
+	•	Live Activity begins automatically.
+	•	Lock Screen & Dynamic Island show points, team info, and number of active players.
+	3.	In-Game (every 1–5 min updates):
+	•	Poll Sleeper matchup endpoint for points.
+	•	Poll NFL state to confirm active games.
+	•	Push updates to Live Activity.
+	4.	Post-Game (last starter finishes):
+	•	Live Activity remains visible for 30 minutes after the last starter’s game ends.
+	•	If another starter plays later, Live Activity continues.
+	5.	End Condition:
+	•	No active starters + 30 min grace → Live Activity ends.
+
+⸻
+
+System Architecture Flow
+	1.	iOS app:
+	•	User enters Sleeper User ID & League ID.
+	•	Starts Live Activity when required.
+	•	Provides push token for server-driven updates.
+	2.	Backend server (optional but recommended):
+	•	Stores Live Activity push tokens.
+	•	Monitors Sleeper API for scoring updates.
+	•	Sends push updates (type ‘.activity’) to iOS devices.
+	3.	iOS Live Activity:
+	•	Receives updates and renders on Lock Screen/Dynamic Island.
+	•	Ends automatically after timeout rules.
+
+⸻
+
+Diagram Descriptions
+	1.	Activity Flow Diagram:
+[User’s Starters] → [Check NFL State + Player Metadata] → [Game In Progress?] → [Start/Continue Live Activity] → [Update Scores via Matchups API] → [Last Starter Finished + 30min] → [End Live Activity]
+	2.	Timeline (Gantt-style example for one Sunday):
+	•	10am: Pre-game check, no Live Activity.
+	•	1pm: Starter game begins → Live Activity starts.
+	•	1–4pm: Regular updates pushed every 1–5 min.
+	•	4pm: Game ends, no other starters → Activity continues until 4:30pm.
+	•	4:30pm: Live Activity ends.
+
+⸻
+
+Notes
+	•	Storage can be handled with AppStorage for persistent config values (user_id, league_id, currentWeek) and in-memory caching for frequently updated data (points, active players).
+	•	Core Data or SwiftData is optional and only recommended if you want to store historical stats or large player datasets.
+	•	Live Activity updates should be push-driven for best battery efficiency and to work when the app is terminated.
+	•	Keep API calls minimal to stay under Sleeper’s 1000 calls/min limit.
