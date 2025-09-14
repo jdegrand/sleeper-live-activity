@@ -15,7 +15,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+# Enable CORS for all routes with specific settings
+cors = CORS(app, resources={
+    r"/*": {
+        "origins": ["*"],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
 
 # Global state management
 class AppState:
@@ -363,7 +370,8 @@ def health_check():
 if __name__ == "__main__":
     startup_tasks()
     try:
-        app.run(host="0.0.0.0", port=8000, debug=True)
+        # Run on all network interfaces with debug mode off for production
+        app.run(host="0.0.0.0", port=8000, debug=False, threaded=True)
     finally:
         scheduler.shutdown()
         logger.info("Sleeper Live Activity API stopped")

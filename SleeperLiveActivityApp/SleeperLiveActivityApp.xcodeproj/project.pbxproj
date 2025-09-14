@@ -7,43 +7,29 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		30807E7D2E75EE260055BA50 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 30807E7C2E75EE260055BA50 /* WidgetKit.framework */; };
-		30807E7F2E75EE260055BA50 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 30807E7E2E75EE260055BA50 /* SwiftUI.framework */; };
-		30807E902E75EE270055BA50 /* SleeperLiveActivityWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 30807E7A2E75EE260055BA50 /* SleeperLiveActivityWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		308784BD2E772AFD0029EF97 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 308784BC2E772AFD0029EF97 /* WidgetKit.framework */; };
+		308784BF2E772AFD0029EF97 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 308784BE2E772AFD0029EF97 /* SwiftUI.framework */; };
+		308784CC2E772AFE0029EF97 /* SleeperLiveActivityAppWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 308784BA2E772AFD0029EF97 /* SleeperLiveActivityAppWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		30807D742E74FFAF0055BA50 /* PBXContainerItemProxy */ = {
+		308784CA2E772AFE0029EF97 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
-			containerPortal = 30807D5E2E74FFAE0055BA50 /* Project object */;
+			containerPortal = 308784A02E772AB90029EF97 /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = 30807D652E74FFAE0055BA50;
-			remoteInfo = SleeperLiveActivityApp;
-		};
-		30807D7E2E74FFAF0055BA50 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 30807D5E2E74FFAE0055BA50 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 30807D652E74FFAE0055BA50;
-			remoteInfo = SleeperLiveActivityApp;
-		};
-		30807E8E2E75EE270055BA50 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 30807D5E2E74FFAE0055BA50 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 30807E792E75EE260055BA50;
-			remoteInfo = SleeperLiveActivityWidgetExtension;
+			remoteGlobalIDString = 308784B92E772AFD0029EF97;
+			remoteInfo = SleeperLiveActivityAppWidgetExtension;
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		30807E912E75EE270055BA50 /* Embed Foundation Extensions */ = {
+		308784D12E772AFE0029EF97 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				30807E902E75EE270055BA50 /* SleeperLiveActivityWidgetExtension.appex in Embed Foundation Extensions */,
+				308784CC2E772AFE0029EF97 /* SleeperLiveActivityAppWidgetExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -51,122 +37,82 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		30807D662E74FFAE0055BA50 /* SleeperLiveActivityApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SleeperLiveActivityApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		30807D732E74FFAF0055BA50 /* SleeperLiveActivityAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SleeperLiveActivityAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		30807D7D2E74FFAF0055BA50 /* SleeperLiveActivityAppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SleeperLiveActivityAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		30807E7A2E75EE260055BA50 /* SleeperLiveActivityWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SleeperLiveActivityWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		30807E7C2E75EE260055BA50 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
-		30807E7E2E75EE260055BA50 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		308784A82E772AB90029EF97 /* SleeperLiveActivityApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SleeperLiveActivityApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		308784BA2E772AFD0029EF97 /* SleeperLiveActivityAppWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SleeperLiveActivityAppWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		308784BC2E772AFD0029EF97 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		308784BE2E772AFD0029EF97 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		30807E942E75EE270055BA50 /* Exceptions for "SleeperLiveActivityWidget" folder in "SleeperLiveActivityWidgetExtension" target */ = {
+		308784CD2E772AFE0029EF97 /* Exceptions for "SleeperLiveActivityAppWidget" folder in "SleeperLiveActivityAppWidgetExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
-			target = 30807E792E75EE260055BA50 /* SleeperLiveActivityWidgetExtension */;
-		};
-		30807E972E75EF530055BA50 /* Exceptions for "SleeperLiveActivityApp" folder in "SleeperLiveActivityWidgetExtension" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				SleeperLiveActivityAttributes.swift,
-			);
-			target = 30807E792E75EE260055BA50 /* SleeperLiveActivityWidgetExtension */;
+			target = 308784B92E772AFD0029EF97 /* SleeperLiveActivityAppWidgetExtension */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		30807D682E74FFAE0055BA50 /* SleeperLiveActivityApp */ = {
+		308784AA2E772AB90029EF97 /* SleeperLiveActivityApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				30807E972E75EF530055BA50 /* Exceptions for "SleeperLiveActivityApp" folder in "SleeperLiveActivityWidgetExtension" target */,
-			);
 			path = SleeperLiveActivityApp;
 			sourceTree = "<group>";
 		};
-		30807D762E74FFAF0055BA50 /* SleeperLiveActivityAppTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = SleeperLiveActivityAppTests;
-			sourceTree = "<group>";
-		};
-		30807D802E74FFAF0055BA50 /* SleeperLiveActivityAppUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = SleeperLiveActivityAppUITests;
-			sourceTree = "<group>";
-		};
-		30807E802E75EE260055BA50 /* SleeperLiveActivityWidget */ = {
+		308784C02E772AFD0029EF97 /* SleeperLiveActivityAppWidget */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				30807E942E75EE270055BA50 /* Exceptions for "SleeperLiveActivityWidget" folder in "SleeperLiveActivityWidgetExtension" target */,
+				308784CD2E772AFE0029EF97 /* Exceptions for "SleeperLiveActivityAppWidget" folder in "SleeperLiveActivityAppWidgetExtension" target */,
 			);
-			path = SleeperLiveActivityWidget;
+			path = SleeperLiveActivityAppWidget;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		30807D632E74FFAE0055BA50 /* Frameworks */ = {
+		308784A52E772AB90029EF97 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		30807D702E74FFAF0055BA50 /* Frameworks */ = {
+		308784B72E772AFD0029EF97 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		30807D7A2E74FFAF0055BA50 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		30807E772E75EE260055BA50 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				30807E7F2E75EE260055BA50 /* SwiftUI.framework in Frameworks */,
-				30807E7D2E75EE260055BA50 /* WidgetKit.framework in Frameworks */,
+				308784BF2E772AFD0029EF97 /* SwiftUI.framework in Frameworks */,
+				308784BD2E772AFD0029EF97 /* WidgetKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		30807D5D2E74FFAE0055BA50 = {
+		3087849F2E772AB90029EF97 = {
 			isa = PBXGroup;
 			children = (
-				30807D682E74FFAE0055BA50 /* SleeperLiveActivityApp */,
-				30807D762E74FFAF0055BA50 /* SleeperLiveActivityAppTests */,
-				30807D802E74FFAF0055BA50 /* SleeperLiveActivityAppUITests */,
-				30807E802E75EE260055BA50 /* SleeperLiveActivityWidget */,
-				30807E7B2E75EE260055BA50 /* Frameworks */,
-				30807D672E74FFAE0055BA50 /* Products */,
+				308784AA2E772AB90029EF97 /* SleeperLiveActivityApp */,
+				308784C02E772AFD0029EF97 /* SleeperLiveActivityAppWidget */,
+				308784BB2E772AFD0029EF97 /* Frameworks */,
+				308784A92E772AB90029EF97 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		30807D672E74FFAE0055BA50 /* Products */ = {
+		308784A92E772AB90029EF97 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				30807D662E74FFAE0055BA50 /* SleeperLiveActivityApp.app */,
-				30807D732E74FFAF0055BA50 /* SleeperLiveActivityAppTests.xctest */,
-				30807D7D2E74FFAF0055BA50 /* SleeperLiveActivityAppUITests.xctest */,
-				30807E7A2E75EE260055BA50 /* SleeperLiveActivityWidgetExtension.appex */,
+				308784A82E772AB90029EF97 /* SleeperLiveActivityApp.app */,
+				308784BA2E772AFD0029EF97 /* SleeperLiveActivityAppWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		30807E7B2E75EE260055BA50 /* Frameworks */ = {
+		308784BB2E772AFD0029EF97 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				30807E7C2E75EE260055BA50 /* WidgetKit.framework */,
-				30807E7E2E75EE260055BA50 /* SwiftUI.framework */,
+				308784BC2E772AFD0029EF97 /* WidgetKit.framework */,
+				308784BE2E772AFD0029EF97 /* SwiftUI.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -174,169 +120,99 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		30807D652E74FFAE0055BA50 /* SleeperLiveActivityApp */ = {
+		308784A72E772AB90029EF97 /* SleeperLiveActivityApp */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 30807D872E74FFAF0055BA50 /* Build configuration list for PBXNativeTarget "SleeperLiveActivityApp" */;
+			buildConfigurationList = 308784B32E772ABA0029EF97 /* Build configuration list for PBXNativeTarget "SleeperLiveActivityApp" */;
 			buildPhases = (
-				30807D622E74FFAE0055BA50 /* Sources */,
-				30807D632E74FFAE0055BA50 /* Frameworks */,
-				30807D642E74FFAE0055BA50 /* Resources */,
-				30807E912E75EE270055BA50 /* Embed Foundation Extensions */,
+				308784A42E772AB90029EF97 /* Sources */,
+				308784A52E772AB90029EF97 /* Frameworks */,
+				308784A62E772AB90029EF97 /* Resources */,
+				308784D12E772AFE0029EF97 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				30807E8F2E75EE270055BA50 /* PBXTargetDependency */,
+				308784CB2E772AFE0029EF97 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				30807D682E74FFAE0055BA50 /* SleeperLiveActivityApp */,
+				308784AA2E772AB90029EF97 /* SleeperLiveActivityApp */,
 			);
 			name = SleeperLiveActivityApp;
 			packageProductDependencies = (
 			);
 			productName = SleeperLiveActivityApp;
-			productReference = 30807D662E74FFAE0055BA50 /* SleeperLiveActivityApp.app */;
+			productReference = 308784A82E772AB90029EF97 /* SleeperLiveActivityApp.app */;
 			productType = "com.apple.product-type.application";
 		};
-		30807D722E74FFAF0055BA50 /* SleeperLiveActivityAppTests */ = {
+		308784B92E772AFD0029EF97 /* SleeperLiveActivityAppWidgetExtension */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 30807D8A2E74FFAF0055BA50 /* Build configuration list for PBXNativeTarget "SleeperLiveActivityAppTests" */;
+			buildConfigurationList = 308784CE2E772AFE0029EF97 /* Build configuration list for PBXNativeTarget "SleeperLiveActivityAppWidgetExtension" */;
 			buildPhases = (
-				30807D6F2E74FFAF0055BA50 /* Sources */,
-				30807D702E74FFAF0055BA50 /* Frameworks */,
-				30807D712E74FFAF0055BA50 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				30807D752E74FFAF0055BA50 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				30807D762E74FFAF0055BA50 /* SleeperLiveActivityAppTests */,
-			);
-			name = SleeperLiveActivityAppTests;
-			packageProductDependencies = (
-			);
-			productName = SleeperLiveActivityAppTests;
-			productReference = 30807D732E74FFAF0055BA50 /* SleeperLiveActivityAppTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
-		30807D7C2E74FFAF0055BA50 /* SleeperLiveActivityAppUITests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 30807D8D2E74FFAF0055BA50 /* Build configuration list for PBXNativeTarget "SleeperLiveActivityAppUITests" */;
-			buildPhases = (
-				30807D792E74FFAF0055BA50 /* Sources */,
-				30807D7A2E74FFAF0055BA50 /* Frameworks */,
-				30807D7B2E74FFAF0055BA50 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				30807D7F2E74FFAF0055BA50 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				30807D802E74FFAF0055BA50 /* SleeperLiveActivityAppUITests */,
-			);
-			name = SleeperLiveActivityAppUITests;
-			packageProductDependencies = (
-			);
-			productName = SleeperLiveActivityAppUITests;
-			productReference = 30807D7D2E74FFAF0055BA50 /* SleeperLiveActivityAppUITests.xctest */;
-			productType = "com.apple.product-type.bundle.ui-testing";
-		};
-		30807E792E75EE260055BA50 /* SleeperLiveActivityWidgetExtension */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 30807E952E75EE270055BA50 /* Build configuration list for PBXNativeTarget "SleeperLiveActivityWidgetExtension" */;
-			buildPhases = (
-				30807E762E75EE260055BA50 /* Sources */,
-				30807E772E75EE260055BA50 /* Frameworks */,
-				30807E782E75EE260055BA50 /* Resources */,
+				308784B62E772AFD0029EF97 /* Sources */,
+				308784B72E772AFD0029EF97 /* Frameworks */,
+				308784B82E772AFD0029EF97 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				30807E802E75EE260055BA50 /* SleeperLiveActivityWidget */,
+				308784C02E772AFD0029EF97 /* SleeperLiveActivityAppWidget */,
 			);
-			name = SleeperLiveActivityWidgetExtension;
+			name = SleeperLiveActivityAppWidgetExtension;
 			packageProductDependencies = (
 			);
-			productName = SleeperLiveActivityWidgetExtension;
-			productReference = 30807E7A2E75EE260055BA50 /* SleeperLiveActivityWidgetExtension.appex */;
+			productName = SleeperLiveActivityAppWidgetExtension;
+			productReference = 308784BA2E772AFD0029EF97 /* SleeperLiveActivityAppWidgetExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		30807D5E2E74FFAE0055BA50 /* Project object */ = {
+		308784A02E772AB90029EF97 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1640;
 				LastUpgradeCheck = 1640;
 				TargetAttributes = {
-					30807D652E74FFAE0055BA50 = {
+					308784A72E772AB90029EF97 = {
 						CreatedOnToolsVersion = 16.4;
 					};
-					30807D722E74FFAF0055BA50 = {
-						CreatedOnToolsVersion = 16.4;
-						TestTargetID = 30807D652E74FFAE0055BA50;
-					};
-					30807D7C2E74FFAF0055BA50 = {
-						CreatedOnToolsVersion = 16.4;
-						TestTargetID = 30807D652E74FFAE0055BA50;
-					};
-					30807E792E75EE260055BA50 = {
+					308784B92E772AFD0029EF97 = {
 						CreatedOnToolsVersion = 16.4;
 					};
 				};
 			};
-			buildConfigurationList = 30807D612E74FFAE0055BA50 /* Build configuration list for PBXProject "SleeperLiveActivityApp" */;
+			buildConfigurationList = 308784A32E772AB90029EF97 /* Build configuration list for PBXProject "SleeperLiveActivityApp" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
 				Base,
 			);
-			mainGroup = 30807D5D2E74FFAE0055BA50;
+			mainGroup = 3087849F2E772AB90029EF97;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
-			productRefGroup = 30807D672E74FFAE0055BA50 /* Products */;
+			productRefGroup = 308784A92E772AB90029EF97 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				30807D652E74FFAE0055BA50 /* SleeperLiveActivityApp */,
-				30807D722E74FFAF0055BA50 /* SleeperLiveActivityAppTests */,
-				30807D7C2E74FFAF0055BA50 /* SleeperLiveActivityAppUITests */,
-				30807E792E75EE260055BA50 /* SleeperLiveActivityWidgetExtension */,
+				308784A72E772AB90029EF97 /* SleeperLiveActivityApp */,
+				308784B92E772AFD0029EF97 /* SleeperLiveActivityAppWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		30807D642E74FFAE0055BA50 /* Resources */ = {
+		308784A62E772AB90029EF97 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		30807D712E74FFAF0055BA50 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		30807D7B2E74FFAF0055BA50 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		30807E782E75EE260055BA50 /* Resources */ = {
+		308784B82E772AFD0029EF97 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -346,28 +222,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		30807D622E74FFAE0055BA50 /* Sources */ = {
+		308784A42E772AB90029EF97 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		30807D6F2E74FFAF0055BA50 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		30807D792E74FFAF0055BA50 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		30807E762E75EE260055BA50 /* Sources */ = {
+		308784B62E772AFD0029EF97 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -377,25 +239,15 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		30807D752E74FFAF0055BA50 /* PBXTargetDependency */ = {
+		308784CB2E772AFE0029EF97 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 30807D652E74FFAE0055BA50 /* SleeperLiveActivityApp */;
-			targetProxy = 30807D742E74FFAF0055BA50 /* PBXContainerItemProxy */;
-		};
-		30807D7F2E74FFAF0055BA50 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 30807D652E74FFAE0055BA50 /* SleeperLiveActivityApp */;
-			targetProxy = 30807D7E2E74FFAF0055BA50 /* PBXContainerItemProxy */;
-		};
-		30807E8F2E75EE270055BA50 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 30807E792E75EE260055BA50 /* SleeperLiveActivityWidgetExtension */;
-			targetProxy = 30807E8E2E75EE270055BA50 /* PBXContainerItemProxy */;
+			target = 308784B92E772AFD0029EF97 /* SleeperLiveActivityAppWidgetExtension */;
+			targetProxy = 308784CA2E772AFE0029EF97 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		30807D852E74FFAF0055BA50 /* Debug */ = {
+		308784B12E772ABA0029EF97 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -430,6 +282,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 8AG9SQW5U6;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -447,6 +300,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
@@ -458,7 +312,7 @@
 			};
 			name = Debug;
 		};
-		30807D862E74FFAF0055BA50 /* Release */ = {
+		308784B22E772ABA0029EF97 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -493,6 +347,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 8AG9SQW5U6;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -504,6 +359,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
@@ -514,7 +370,7 @@
 			};
 			name = Release;
 		};
-		30807D882E74FFAF0055BA50 /* Debug */ = {
+		308784B42E772ABA0029EF97 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -522,11 +378,12 @@
 				CODE_SIGN_ENTITLEMENTS = SleeperLiveActivityApp/SleeperLiveActivityApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8AG9SQW5U6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
-				INFOPLIST_KEY_NSSupportsLiveActivitiesFrequentUpdates = YES;
-				INFOPLIST_KEY_UIBackgroundModes = "background-fetch background-processing remote-notification";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -535,7 +392,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = jdegrand.SleeperLiveActivityApp;
+				PRODUCT_BUNDLE_IDENTIFIER = me.jdegrand.SleeperLiveActivityApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -543,7 +400,7 @@
 			};
 			name = Debug;
 		};
-		30807D892E74FFAF0055BA50 /* Release */ = {
+		308784B52E772ABA0029EF97 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -551,11 +408,12 @@
 				CODE_SIGN_ENTITLEMENTS = SleeperLiveActivityApp/SleeperLiveActivityApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8AG9SQW5U6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
-				INFOPLIST_KEY_NSSupportsLiveActivitiesFrequentUpdates = YES;
-				INFOPLIST_KEY_UIBackgroundModes = "background-fetch background-processing remote-notification";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -564,7 +422,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = jdegrand.SleeperLiveActivityApp;
+				PRODUCT_BUNDLE_IDENTIFIER = me.jdegrand.SleeperLiveActivityApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -572,94 +430,26 @@
 			};
 			name = Release;
 		};
-		30807D8B2E74FFAF0055BA50 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = NO;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = jdegrand.SleeperLiveActivityAppTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SleeperLiveActivityApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/SleeperLiveActivityApp";
-			};
-			name = Debug;
-		};
-		30807D8C2E74FFAF0055BA50 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = NO;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = jdegrand.SleeperLiveActivityAppTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SleeperLiveActivityApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/SleeperLiveActivityApp";
-			};
-			name = Release;
-		};
-		30807D8E2E74FFAF0055BA50 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = NO;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = jdegrand.SleeperLiveActivityAppUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = SleeperLiveActivityApp;
-			};
-			name = Debug;
-		};
-		30807D8F2E74FFAF0055BA50 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = NO;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = jdegrand.SleeperLiveActivityAppUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = SleeperLiveActivityApp;
-			};
-			name = Release;
-		};
-		30807E922E75EE270055BA50 /* Debug */ = {
+		308784CF2E772AFE0029EF97 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
-				CODE_SIGN_ENTITLEMENTS = SleeperLiveActivityWidget/SleeperLiveActivityWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8AG9SQW5U6;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = SleeperLiveActivityWidget/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = SleeperLiveActivityWidget;
+				INFOPLIST_FILE = SleeperLiveActivityAppWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = SleeperLiveActivityAppWidget;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = jdegrand.SleeperLiveActivityApp.SleeperLiveActivityWidgetExtension;
+				PRODUCT_BUNDLE_IDENTIFIER = me.jdegrand.SleeperLiveActivityApp.SleeperLiveActivityAppWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -668,26 +458,26 @@
 			};
 			name = Debug;
 		};
-		30807E932E75EE270055BA50 /* Release */ = {
+		308784D02E772AFE0029EF97 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
-				CODE_SIGN_ENTITLEMENTS = SleeperLiveActivityWidget/SleeperLiveActivityWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8AG9SQW5U6;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = SleeperLiveActivityWidget/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = SleeperLiveActivityWidget;
+				INFOPLIST_FILE = SleeperLiveActivityAppWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = SleeperLiveActivityAppWidget;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = jdegrand.SleeperLiveActivityApp.SleeperLiveActivityWidgetExtension;
+				PRODUCT_BUNDLE_IDENTIFIER = me.jdegrand.SleeperLiveActivityApp.SleeperLiveActivityAppWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -699,52 +489,34 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		30807D612E74FFAE0055BA50 /* Build configuration list for PBXProject "SleeperLiveActivityApp" */ = {
+		308784A32E772AB90029EF97 /* Build configuration list for PBXProject "SleeperLiveActivityApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				30807D852E74FFAF0055BA50 /* Debug */,
-				30807D862E74FFAF0055BA50 /* Release */,
+				308784B12E772ABA0029EF97 /* Debug */,
+				308784B22E772ABA0029EF97 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		30807D872E74FFAF0055BA50 /* Build configuration list for PBXNativeTarget "SleeperLiveActivityApp" */ = {
+		308784B32E772ABA0029EF97 /* Build configuration list for PBXNativeTarget "SleeperLiveActivityApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				30807D882E74FFAF0055BA50 /* Debug */,
-				30807D892E74FFAF0055BA50 /* Release */,
+				308784B42E772ABA0029EF97 /* Debug */,
+				308784B52E772ABA0029EF97 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		30807D8A2E74FFAF0055BA50 /* Build configuration list for PBXNativeTarget "SleeperLiveActivityAppTests" */ = {
+		308784CE2E772AFE0029EF97 /* Build configuration list for PBXNativeTarget "SleeperLiveActivityAppWidgetExtension" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				30807D8B2E74FFAF0055BA50 /* Debug */,
-				30807D8C2E74FFAF0055BA50 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		30807D8D2E74FFAF0055BA50 /* Build configuration list for PBXNativeTarget "SleeperLiveActivityAppUITests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				30807D8E2E74FFAF0055BA50 /* Debug */,
-				30807D8F2E74FFAF0055BA50 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		30807E952E75EE270055BA50 /* Build configuration list for PBXNativeTarget "SleeperLiveActivityWidgetExtension" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				30807E922E75EE270055BA50 /* Debug */,
-				30807E932E75EE270055BA50 /* Release */,
+				308784CF2E772AFE0029EF97 /* Debug */,
+				308784D02E772AFE0029EF97 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = 30807D5E2E74FFAE0055BA50 /* Project object */;
+	rootObject = 308784A02E772AB90029EF97 /* Project object */;
 }

@@ -8,7 +8,7 @@
 import Foundation
 
 class SleeperAPIClient {
-    private let baseURL = "http://localhost:8000"
+    private let baseURL = "http://192.168.4.194:8000"
     private let session = URLSession.shared
     
     func registerUser(config: UserConfig) async throws {

@@ -5,8 +5,10 @@
 //  Created by Joey DeGrand on 9/12/25.
 //
 
-import SwiftUI
+import Foundation
+import Combine
 import ActivityKit
+import WidgetKit
 import UserNotifications
 import Combine
 
@@ -22,7 +24,7 @@ class SleeperViewModel: ObservableObject {
     
     private let apiClient = SleeperAPIClient()
     private var cancellables = Set<AnyCancellable>()
-    private var currentActivity: Activity<SleeperLiveActivityAttributes>?
+    @Published private(set) var activity: Activity<SleeperLiveActivityAttributes>?
     
     // Configuration keys
     private let userIDKey = "SleeperUserID"
@@ -42,17 +44,21 @@ class SleeperViewModel: ObservableObject {
             queue: .main
         ) { _ in
             if !self.isLiveActivityActive {
-                self.startLiveActivity()
+                Task {
+                    await self.startLiveActivity()
+                }
             }
         }
-        
+
         NotificationCenter.default.addObserver(
             forName: .autoEndLiveActivity,
             object: nil,
             queue: .main
         ) { _ in
             if self.isLiveActivityActive {
-                self.stopLiveActivity()
+                Task {
+                    await self.stopLiveActivity()
+                }
             }
         }
     }
@@ -90,19 +96,30 @@ class SleeperViewModel: ObservableObject {
     private func checkLiveActivityStatus() {
         if ActivityAuthorizationInfo().areActivitiesEnabled {
             // Check if we have an active Live Activity
-            for activity in Activity<SleeperLiveActivityAttributes>.activities {
-                if activity.activityState == .active {
-                    currentActivity = activity
-                    isLiveActivityActive = true
-                    break
-                }
+            if let currentActivity = Activity<SleeperLiveActivityAttributes>.activities.first(where: { $0.activityState == .active }) {
+                self.activity = currentActivity
+                isLiveActivityActive = true
+                
+                // Update local state from the activity
+                let state = currentActivity.content.state
+                currentPoints = state.totalPoints
+                activePlayers = state.activePlayersCount
+                lastUpdate = state.lastUpdate
             }
         }
     }
     
-    func startLiveActivity() {
+    @MainActor
+    func startLiveActivity() async {
         guard isConfigured else {
             errorMessage = "Please configure your Sleeper credentials first"
+            return
+        }
+        
+        // Check if we already have an active activity
+        if let currentActivity = Activity<SleeperLiveActivityAttributes>.activities.first(where: { $0.activityState == .active }) {
+            self.activity = currentActivity
+            isLiveActivityActive = true
             return
         }
         
@@ -121,52 +138,65 @@ class SleeperViewModel: ObservableObject {
         )
         
         let initialState = SleeperLiveActivityAttributes.ContentState(
-            totalPoints: 0.0,
-            activePlayersCount: 0,
+            totalPoints: currentPoints,
+            activePlayersCount: activePlayers,
             teamName: "Your Team",
-            opponentPoints: 0.0,
+            opponentPoints: 0.0, // Will be updated in the first fetch
             gameStatus: "Starting...",
             lastUpdate: Date()
         )
         
-        print("Attempting to start Live Activity...")
-        print("Attributes: userID=\(userID), leagueID=\(leagueID)")
-        
         do {
-            let activity = try Activity<SleeperLiveActivityAttributes>.request(
+            let newActivity = try Activity.request(
                 attributes: attributes,
-                contentState: initialState,
+                content: .init(state: initialState, staleDate: nil),
                 pushType: .token
             )
             
-            print("Live Activity started successfully with ID: \(activity.id)")
-            currentActivity = activity
+            print("Live Activity started successfully with ID: \(newActivity.id)")
+            self.activity = newActivity
             isLiveActivityActive = true
+            errorMessage = nil
             
             // Register with backend
-            Task {
-                await registerWithBackend()
-                await notifyBackendLiveActivityStarted()
-            }
+            await registerWithBackend()
+            await notifyBackendLiveActivityStarted()
+            
+            // Start monitoring for updates
+            startMonitoringActivityUpdates()
             
         } catch {
-            print("Live Activity error details: \(error)")
-            print("Error type: \(type(of: error))")
-            print("Error code: \((error as NSError).code)")
-            print("Error domain: \((error as NSError).domain)")
+            print("Failed to start Live Activity: \(error)")
             errorMessage = "Failed to start Live Activity: \(error.localizedDescription)"
         }
     }
     
-    func stopLiveActivity() {
-        Task {
-            await currentActivity?.end(dismissalPolicy: .immediate)
-            currentActivity = nil
-            isLiveActivityActive = false
-            
-            // Notify backend
-            await notifyBackendLiveActivityStopped()
-        }
+    @MainActor
+    func stopLiveActivity() async {
+        guard let activity = activity else { return }
+        
+        // Create a final update before ending
+        let finalState = SleeperLiveActivityAttributes.ContentState(
+            totalPoints: currentPoints,
+            activePlayersCount: activePlayers,
+            teamName: "Your Team",
+            opponentPoints: 0.0,
+            gameStatus: "Final",
+            lastUpdate: Date()
+        )
+        
+        // Update with final state before ending
+        await activity.update(using: finalState)
+        
+        // End the activity
+        await activity.end(using: finalState, dismissalPolicy: .immediate)
+        
+        // Clean up
+        self.activity = nil
+        isLiveActivityActive = false
+        
+        // Notify backend
+        await notifyBackendLiveActivityStopped()
     }
     
     func refreshData() {
@@ -195,27 +225,44 @@ class SleeperViewModel: ObservableObject {
                let rosterID = userRoster["roster_id"] as? Int,
                let userMatchup = matchups.first(where: { $0["roster_id"] as? Int == rosterID }) {
                 
-                currentPoints = userMatchup["points"] as? Double ?? 0.0
-                activePlayers = (userRoster["starters"] as? [String])?.count ?? 0
-                lastUpdate = Date()
-                
-                // Update Live Activity if active
-                if let activity = currentActivity {
-                    let newState = SleeperLiveActivityAttributes.ContentState(
-                        totalPoints: currentPoints,
-                        activePlayersCount: activePlayers,
-                        teamName: "Team \(rosterID)",
-                        opponentPoints: findOpponentPoints(matchups: matchups, userMatchup: userMatchup),
-                        gameStatus: "Live",
-                        lastUpdate: lastUpdate
-                    )
-                    
-                    await activity.update(using: newState)
-                }
+                await updateLiveActivity(with: matchups, userMatchup: userMatchup)
             }
             
         } catch {
             errorMessage = "Failed to fetch data: \(error.localizedDescription)"
+        }
+    }
+    
+    private func updateLiveActivity(with matchups: [[String: Any]], userMatchup: [String: Any]) async {
+        guard let userRoster = matchups.first(where: { $0["roster_id"] as? Int == userMatchup["roster_id"] as? Int ?? 0 }) else { return }
+        
+        let newPoints = userMatchup["points"] as? Double ?? 0.0
+        let newActivePlayers = (userRoster["starters"] as? [String])?.count ?? 0
+        let opponentPoints = findOpponentPoints(matchups: matchups, userMatchup: userMatchup)
+        let now = Date()
+        
+        // Update local state
+        currentPoints = newPoints
+        activePlayers = newActivePlayers
+        lastUpdate = now
+        
+        // Update Live Activity if active
+        if let activity = activity {
+            let newState = SleeperLiveActivityAttributes.ContentState(
+                totalPoints: newPoints,
+                activePlayersCount: newActivePlayers,
+                teamName: "Your Team",
+                opponentPoints: opponentPoints,
+                gameStatus: "Live",
+                lastUpdate: now
+            )
+            
+            do {
+                try await activity.update(using: newState)
+                print("Live Activity updated successfully")
+            } catch {
+                print("Failed to update Live Activity: \(error)")
+            }
         }
     }
     
@@ -247,9 +294,12 @@ class SleeperViewModel: ObservableObject {
     }
     
     private func registerWithBackend() async {
-        guard let pushToken = await getPushToken() else { return }
+        guard let activity = activity else { return }
         
+        // Get the push token for this activity
+        let pushToken = await getPushToken(for: activity)
         let deviceID = getDeviceID()
+        
         let config = UserConfig(
             userID: userID,
             leagueID: leagueID,
@@ -259,9 +309,37 @@ class SleeperViewModel: ObservableObject {
         
         do {
             try await apiClient.registerUser(config: config)
+            print("Successfully registered with backend")
         } catch {
             print("Failed to register with backend: \(error)")
         }
+    }
+    
+    private func startMonitoringActivityUpdates() {
+        Task {
+            for await activity in Activity<SleeperLiveActivityAttributes>.activityUpdates {
+                print("Activity update received: \(activity.id) - \(activity.activityState)")
+                
+                // Update local state when activity changes
+                if activity.activityState == .ended || activity.activityState == .dismissed {
+                    await MainActor.run {
+                        self.activity = nil
+                        self.isLiveActivityActive = false
+                    }
+                } else if activity.activityState == .active {
+                    await MainActor.run {
+                        self.activity = activity
+                        self.isLiveActivityActive = true
+                    }
+                }
+            }
+        }
+    }
+    
+    private func getPushToken(for activity: Activity<SleeperLiveActivityAttributes>) async -> String {
+        // In a real implementation, you would get the actual push token
+        // For now, return a placeholder that includes the activity ID
+        return "\(activity.id).\(getDeviceID())"
     }
     
     private func getPushToken() async -> String? {

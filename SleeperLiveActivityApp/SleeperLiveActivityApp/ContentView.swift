@@ -7,6 +7,7 @@
 
 import SwiftUI
 import ActivityKit
+import WidgetKit
 
 struct ContentView: View {
     @StateObject private var viewModel = SleeperViewModel()
@@ -38,78 +39,105 @@ struct ContentView: View {
                     if viewModel.isConfigured {
                         // User Info
                         VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Image(systemName: "person.circle.fill")
-                                    .foregroundColor(.green)
-                                Text("User ID: \(viewModel.userID)")
-                                    .fontWeight(.medium)
-                            }
-                            
-                            HStack {
-                                Image(systemName: "trophy.circle.fill")
-                                    .foregroundColor(.orange)
-                                Text("League ID: \(viewModel.leagueID)")
-                                    .fontWeight(.medium)
-                            }
-                        }
-                        .padding()
-                        .background(Color(.systemGray6))
-                        .cornerRadius(12)
-                        
-                        // Live Activity Status
-                        VStack(spacing: 12) {
-                            HStack {
-                                Circle()
-                                    .fill(viewModel.isLiveActivityActive ? .green : .red)
-                                    .frame(width: 12, height: 12)
+                            // Current Score
+                            VStack(spacing: 12) {
+                                Text("Current Score")
+                                    .font(.headline)
                                 
-                                Text(viewModel.isLiveActivityActive ? "Live Activity Active" : "Live Activity Inactive")
-                                    .fontWeight(.medium)
+                                HStack(spacing: 20) {
+                                    VStack {
+                                        Text("You")
+                                            .font(.subheadline)
+                                        Text(String(format: "%.1f", viewModel.currentPoints))
+                                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                                            .foregroundColor(.blue)
+                                    }
+                                    
+                                    Divider()
+                                        .frame(height: 40)
+                                    
+                                    VStack {
+                                        Text("Active")
+                                            .font(.subheadline)
+                                        Text("\(viewModel.activePlayers)")
+                                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                                            .foregroundColor(.green)
+                                    }
+                                }
                                 
-                                Spacer()
-                            }
-                            
-                            if viewModel.isLiveActivityActive {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Points: \(viewModel.currentPoints, specifier: "%.1f")")
-                                    Text("Active Players: \(viewModel.activePlayers)")
-                                    Text("Last Update: \(viewModel.lastUpdate, formatter: timeFormatter)")
+                                Divider()
+                                
+                                HStack {
+                                    Image(systemName: "clock")
+                                        .foregroundColor(.secondary)
+                                    Text("Updated: \(viewModel.lastUpdate, formatter: timeFormatter)")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
                             }
-                        }
-                        .padding()
-                        .background(Color(.systemGray6))
-                        .cornerRadius(12)
-                        
-                        // Action Buttons
-                        VStack(spacing: 12) {
-                            Button(action: {
-                                if viewModel.isLiveActivityActive {
-                                    viewModel.stopLiveActivity()
-                                } else {
-                                    viewModel.startLiveActivity()
-                                }
-                            }) {
+                            .padding()
+                            .background(Color(.systemGray6))
+                            .cornerRadius(12)
+                            
+                            // Live Activity Status
+                            VStack(spacing: 12) {
                                 HStack {
-                                    Image(systemName: viewModel.isLiveActivityActive ? "stop.circle.fill" : "play.circle.fill")
-                                    Text(viewModel.isLiveActivityActive ? "Stop Live Activity" : "Start Live Activity")
+                                    Circle()
+                                        .fill(viewModel.isLiveActivityActive ? .green : .red)
+                                        .frame(width: 12, height: 12)
+                                    
+                                    Text(viewModel.isLiveActivityActive ? "Live Activity Active" : "Live Activity Inactive")
+                                        .fontWeight(.medium)
+                                    
+                                    Spacer()
+                                }
+                                
+                                if viewModel.isLiveActivityActive {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("Points: \(viewModel.currentPoints, specifier: "%.1f")")
+                                        Text("Active Players: \(viewModel.activePlayers)")
+                                        Text("Last Update: \(viewModel.lastUpdate, formatter: timeFormatter)")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                            .padding()
+                            .background(Color(.systemGray6))
+                            .cornerRadius(12)
+                            
+                            // Action Buttons
+                            VStack(spacing: 12) {
+                                Button(action: {
+                                    Task {
+                                        if viewModel.isLiveActivityActive {
+                                            await viewModel.stopLiveActivity()
+                                        } else {
+                                            await viewModel.startLiveActivity()
+                                        }
+                                    }
+                                }) {
+                                    HStack {
+                                        Image(systemName: viewModel.isLiveActivityActive ? "stop.circle.fill" : "play.circle.fill")
+                                        Text(viewModel.isLiveActivityActive ? "Stop Live Activity" : "Start Live Activity")
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(viewModel.isLiveActivityActive ? Color.red : Color.blue)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(10)
+                                }
+                                .padding(.horizontal)
+                                .disabled(!viewModel.isConfigured)
+                                
+                                Button("Refresh Data") {
+                                    viewModel.refreshData()
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding()
-                                .background(viewModel.isLiveActivityActive ? .red : .blue)
-                                .foregroundColor(.white)
+                                .background(Color(.systemGray5))
                                 .cornerRadius(12)
                             }
-                            
-                            Button("Refresh Data") {
-                                viewModel.refreshData()
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color(.systemGray5))
-                            .cornerRadius(12)
                         }
                     } else {
                         // Setup Required
