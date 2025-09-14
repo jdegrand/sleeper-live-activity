@@ -9,72 +9,202 @@ import ActivityKit
 import WidgetKit
 import SwiftUI
 
-struct SleeperLiveActivityAppWidgetAttributes: ActivityAttributes {
+struct SleeperLiveActivityAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable {
-        // Dynamic stateful properties about your activity go here!
-        var emoji: String
+        var totalPoints: Double
+        var activePlayersCount: Int
+        var teamName: String
+        var opponentPoints: Double
+        var gameStatus: String
+        var lastUpdate: Date
     }
 
-    // Fixed non-changing properties about your activity go here!
-    var name: String
+    var userID: String
+    var leagueID: String
 }
 
 struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
     var body: some WidgetConfiguration {
-        ActivityConfiguration(for: SleeperLiveActivityAppWidgetAttributes.self) { context in
+        ActivityConfiguration(for: SleeperLiveActivityAttributes.self) { context in
             // Lock screen/banner UI goes here
-            VStack {
-                Text("Hello \(context.state.emoji)")
+            VStack(spacing: 12) {
+                HStack {
+                    Image(systemName: "sportscourt.fill")
+                        .foregroundColor(.blue)
+                        .font(.title3)
+
+                    Text("Fantasy Football")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+
+                    Spacer()
+
+                    Text(context.state.gameStatus)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.orange)
+                }
+
+                HStack(spacing: 20) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Your Score")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Text("\(context.state.totalPoints, specifier: "%.1f")")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.blue)
+                    }
+
+                    Spacer()
+
+                    VStack(alignment: .center, spacing: 4) {
+                        Text("Active Players")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Text("\(context.state.activePlayersCount)")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.green)
+                    }
+
+                    Spacer()
+
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("Opponent")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Text("\(context.state.opponentPoints, specifier: "%.1f")")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.red)
+                    }
+                }
+
+                HStack {
+                    Image(systemName: "clock")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Text("Updated \(context.state.lastUpdate, formatter: timeFormatter)")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
             }
-            .activityBackgroundTint(Color.cyan)
-            .activitySystemActionForegroundColor(Color.black)
+            .padding()
+            .activityBackgroundTint(Color.black.opacity(0.1))
+            .activitySystemActionForegroundColor(Color.white)
 
         } dynamicIsland: { context in
             DynamicIsland {
                 // Expanded UI goes here.  Compose the expanded UI through
                 // various regions, like leading/trailing/center/bottom
                 DynamicIslandExpandedRegion(.leading) {
-                    Text("Leading")
+                    VStack(alignment: .leading) {
+                        Text("Your Score")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("\(context.state.totalPoints, specifier: "%.1f")")
+                            .font(.title3)
+                            .fontWeight(.bold)
+                            .foregroundColor(.blue)
+                    }
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Text("Trailing")
+                    VStack(alignment: .trailing) {
+                        Text("Opponent")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("\(context.state.opponentPoints, specifier: "%.1f")")
+                            .font(.title3)
+                            .fontWeight(.bold)
+                            .foregroundColor(.red)
+                    }
+                }
+                DynamicIslandExpandedRegion(.center) {
+                    VStack {
+                        Text("Active Players")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("\(context.state.activePlayersCount)")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.green)
+                    }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    Text("Bottom \(context.state.emoji)")
-                    // more content
+                    HStack {
+                        Image(systemName: "sportscourt.fill")
+                            .foregroundColor(.blue)
+                        Text("Fantasy Football - \(context.state.gameStatus)")
+                            .font(.caption)
+                        Spacer()
+                        Text("Updated \(context.state.lastUpdate, formatter: timeFormatter)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
                 }
             } compactLeading: {
-                Text("L")
+                Image(systemName: "sportscourt.fill")
+                    .foregroundColor(.blue)
             } compactTrailing: {
-                Text("T \(context.state.emoji)")
+                VStack {
+                    Text("\(context.state.totalPoints, specifier: "%.0f")")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                    Text("pts")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
             } minimal: {
-                Text(context.state.emoji)
+                Image(systemName: "sportscourt.fill")
+                    .foregroundColor(.blue)
             }
-            .widgetURL(URL(string: "http://www.apple.com"))
-            .keylineTint(Color.red)
+            .widgetURL(URL(string: "sleeperapp://"))
+            .keylineTint(Color.blue)
         }
     }
 }
 
-extension SleeperLiveActivityAppWidgetAttributes {
-    fileprivate static var preview: SleeperLiveActivityAppWidgetAttributes {
-        SleeperLiveActivityAppWidgetAttributes(name: "World")
+private let timeFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.timeStyle = .short
+    return formatter
+}()
+
+extension SleeperLiveActivityAttributes {
+    fileprivate static var preview: SleeperLiveActivityAttributes {
+        SleeperLiveActivityAttributes(userID: "12345", leagueID: "67890")
     }
 }
 
-extension SleeperLiveActivityAppWidgetAttributes.ContentState {
-    fileprivate static var smiley: SleeperLiveActivityAppWidgetAttributes.ContentState {
-        SleeperLiveActivityAppWidgetAttributes.ContentState(emoji: "😀")
+extension SleeperLiveActivityAttributes.ContentState {
+    fileprivate static var active: SleeperLiveActivityAttributes.ContentState {
+        SleeperLiveActivityAttributes.ContentState(
+            totalPoints: 87.5,
+            activePlayersCount: 3,
+            teamName: "Your Team",
+            opponentPoints: 72.8,
+            gameStatus: "Live",
+            lastUpdate: Date()
+        )
      }
-     
-     fileprivate static var starEyes: SleeperLiveActivityAppWidgetAttributes.ContentState {
-         SleeperLiveActivityAppWidgetAttributes.ContentState(emoji: "🤩")
+
+     fileprivate static var final: SleeperLiveActivityAttributes.ContentState {
+         SleeperLiveActivityAttributes.ContentState(
+             totalPoints: 124.2,
+             activePlayersCount: 0,
+             teamName: "Your Team",
+             opponentPoints: 108.6,
+             gameStatus: "Final",
+             lastUpdate: Date()
+         )
      }
 }
 
-#Preview("Notification", as: .content, using: SleeperLiveActivityAppWidgetAttributes.preview) {
+#Preview("Notification", as: .content, using: SleeperLiveActivityAttributes.preview) {
    SleeperLiveActivityAppWidgetLiveActivity()
 } contentStates: {
-    SleeperLiveActivityAppWidgetAttributes.ContentState.smiley
-    SleeperLiveActivityAppWidgetAttributes.ContentState.starEyes
+    SleeperLiveActivityAttributes.ContentState.active
+    SleeperLiveActivityAttributes.ContentState.final
 }
