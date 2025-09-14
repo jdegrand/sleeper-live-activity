@@ -13,7 +13,8 @@ import UserNotifications
 import Combine
 
 class SleeperViewModel: ObservableObject {
-    @Published var userID: String = ""
+    @Published var username: String = ""
+    @Published var userID: String = "" // Internal storage - resolved from username
     @Published var leagueID: String = ""
     @Published var isConfigured: Bool = false
     @Published var isLiveActivityActive: Bool = false
@@ -31,9 +32,11 @@ class SleeperViewModel: ObservableObject {
     private let apiClient = SleeperAPIClient()
     private var cancellables = Set<AnyCancellable>()
     @Published private(set) var activity: Activity<SleeperLiveActivityAttributes>?
+    private var refreshTimer: Timer?
     
     // Configuration keys
-    private let userIDKey = "SleeperUserID"
+    private let usernameKey = "SleeperUsername"
+    private let userIDKey = "SleeperUserID" // Cached user ID from username
     private let leagueIDKey = "SleeperLeagueID"
     private let deviceIDKey = "SleeperDeviceID"
     
@@ -70,9 +73,10 @@ class SleeperViewModel: ObservableObject {
     }
     
     func loadConfiguration() {
+        username = UserDefaults.standard.string(forKey: usernameKey) ?? ""
         userID = UserDefaults.standard.string(forKey: userIDKey) ?? ""
         leagueID = UserDefaults.standard.string(forKey: leagueIDKey) ?? ""
-        isConfigured = !userID.isEmpty && !leagueID.isEmpty
+        isConfigured = !username.isEmpty && !leagueID.isEmpty
 
         // Check if Live Activity is currently running
         checkLiveActivityStatus()
@@ -80,19 +84,25 @@ class SleeperViewModel: ObservableObject {
         // Fetch data if configured
         if isConfigured {
             Task {
+                // Resolve username to userID if needed
+                if userID.isEmpty {
+                    await resolveUsernameToUserID()
+                }
                 await fetchLatestData()
             }
         }
     }
     
     func saveConfiguration() {
+        UserDefaults.standard.set(username, forKey: usernameKey)
         UserDefaults.standard.set(userID, forKey: userIDKey)
         UserDefaults.standard.set(leagueID, forKey: leagueIDKey)
-        isConfigured = !userID.isEmpty && !leagueID.isEmpty
+        isConfigured = !username.isEmpty && !leagueID.isEmpty
 
-        // Fetch data and register with backend if configured
+        // Resolve username and fetch data if configured
         if isConfigured {
             Task {
+                await resolveUsernameToUserID()
                 await fetchLatestData()
                 await registerWithBackend()
             }
@@ -174,7 +184,10 @@ class SleeperViewModel: ObservableObject {
             self.activity = newActivity
             isLiveActivityActive = true
             errorMessage = nil
-            
+
+            // Start 30-second refresh timer
+            startRefreshTimer()
+
             // Register with backend
             await registerWithBackend()
             await notifyBackendLiveActivityStarted()
@@ -214,7 +227,8 @@ class SleeperViewModel: ObservableObject {
         // Clean up
         self.activity = nil
         isLiveActivityActive = false
-        
+        stopRefreshTimer()
+
         // Notify backend
         await notifyBackendLiveActivityStopped()
     }
@@ -279,19 +293,29 @@ class SleeperViewModel: ObservableObject {
         // Count active players (those currently in games)
         let newActivePlayers = await countActivePlayers(userMatchup: userMatchup)
 
-        // Update local state
-        currentPoints = newPoints
-        activePlayers = newActivePlayers
-        opponentPoints = newOpponentPoints
-        teamName = userTeamName
-        opponentTeamName = opponentName
-        gameStatus = newGameStatus
-        lastUpdate = now
+        // Update local state on main thread
+        await MainActor.run {
+            currentPoints = newPoints
+            activePlayers = newActivePlayers
+            opponentPoints = newOpponentPoints
+            teamName = userTeamName
+            opponentTeamName = opponentName
+            gameStatus = newGameStatus
+            lastUpdate = now
+        }
 
         print("📊 Updated scores - You: \(newPoints), Opponent: \(newOpponentPoints), Active: \(newActivePlayers)")
 
         // Update Live Activity if active
         if let activity = activity {
+            print("🎯 Updating Live Activity with avatars - User: \(userAvatarURL), Opponent: \(opponentAvatarURL)")
+
+            // Get cached image data for Live Activity
+            let userImageData = ImageCacheManager.shared.getCachedImage(for: userAvatarURL)?.pngData()
+            let opponentImageData = ImageCacheManager.shared.getCachedImage(for: opponentAvatarURL)?.pngData()
+
+            print("🖼️ Image data - User: \(userImageData != nil ? "✅" : "❌"), Opponent: \(opponentImageData != nil ? "✅" : "❌")")
+
             let newState = SleeperLiveActivityAttributes.ContentState(
                 totalPoints: newPoints,
                 activePlayersCount: newActivePlayers,
@@ -300,6 +324,8 @@ class SleeperViewModel: ObservableObject {
                 opponentTeamName: opponentName,
                 userAvatarURL: userAvatarURL,
                 opponentAvatarURL: opponentAvatarURL,
+                userAvatarData: userImageData,
+                opponentAvatarData: opponentImageData,
                 gameStatus: newGameStatus,
                 lastUpdate: now
             )
@@ -352,13 +378,31 @@ class SleeperViewModel: ObservableObject {
                     let userResult = await userInfo
                     let opponentResult = await opponentInfo
 
-                    // Update avatar URLs
-                    if let userAvatar = userResult?["avatar"] as? String {
-                        userAvatarURL = "https://sleepercdn.com/avatars/thumbs/\(userAvatar)"
-                    }
+                    // Update avatar URLs and pre-download for Live Activities
+                    await MainActor.run {
+                        if let userAvatar = userResult?["avatar"] as? String {
+                            userAvatarURL = "https://sleepercdn.com/avatars/thumbs/\(userAvatar)"
+                            print("📸 User avatar URL set: \(userAvatarURL)")
 
-                    if let opponentAvatar = opponentResult?["avatar"] as? String {
-                        opponentAvatarURL = "https://sleepercdn.com/avatars/thumbs/\(opponentAvatar)"
+                            // Pre-download and cache for Live Activity
+                            Task {
+                                await ImageCacheManager.shared.downloadAndCacheImage(from: userAvatarURL)
+                            }
+                        } else {
+                            print("📸 No user avatar found")
+                        }
+
+                        if let opponentAvatar = opponentResult?["avatar"] as? String {
+                            opponentAvatarURL = "https://sleepercdn.com/avatars/thumbs/\(opponentAvatar)"
+                            print("📸 Opponent avatar URL set: \(opponentAvatarURL)")
+
+                            // Pre-download and cache for Live Activity
+                            Task {
+                                await ImageCacheManager.shared.downloadAndCacheImage(from: opponentAvatarURL)
+                            }
+                        } else {
+                            print("📸 No opponent avatar found")
+                        }
                     }
 
                     // Get display names or use usernames
@@ -487,6 +531,51 @@ class SleeperViewModel: ObservableObject {
         // In a real implementation, you would get the actual push token
         // For now, return a placeholder that includes the activity ID
         return "\(activity.id).\(getDeviceID())"
+    }
+
+    // MARK: - Refresh Timer
+    private func startRefreshTimer() {
+        stopRefreshTimer() // Stop any existing timer
+
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+            guard let self = self, self.isLiveActivityActive else { return }
+            print("🔄 30-second refresh triggered")
+            Task {
+                await self.fetchLatestData()
+            }
+        }
+
+        print("⏰ Started 30-second refresh timer")
+    }
+
+    private func stopRefreshTimer() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+        print("⏰ Stopped refresh timer")
+    }
+
+    // MARK: - Username Resolution
+    @MainActor
+    private func resolveUsernameToUserID() async {
+        guard !username.isEmpty else { return }
+
+        do {
+            print("🔍 Resolving username '\(username)' to user ID...")
+            let userData = try await apiClient.getUserByUsername(username: username)
+
+            if let resolvedUserID = userData["user_id"] as? String {
+                userID = resolvedUserID
+                // Cache the resolved user ID
+                UserDefaults.standard.set(userID, forKey: userIDKey)
+                print("✅ Username '\(username)' resolved to user ID: \(userID)")
+            } else {
+                print("❌ Could not resolve username '\(username)' to user ID")
+                errorMessage = "Username '\(username)' not found"
+            }
+        } catch {
+            print("❌ Failed to resolve username: \(error)")
+            errorMessage = "Failed to resolve username: \(error.localizedDescription)"
+        }
     }
     
     private func getPushToken() async -> String? {

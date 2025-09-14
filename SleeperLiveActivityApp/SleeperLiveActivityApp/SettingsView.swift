@@ -10,7 +10,7 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var viewModel: SleeperViewModel
     @Environment(\.dismiss) private var dismiss
-    @State private var tempUserID: String = ""
+    @State private var tempUsername: String = ""
     @State private var tempLeagueID: String = ""
     @State private var isValidating = false
     
@@ -19,11 +19,13 @@ struct SettingsView: View {
             Form {
                 Section(header: Text("Sleeper Configuration")) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("User ID")
+                        Text("Username")
                             .font(.headline)
-                        TextField("Enter your Sleeper User ID", text: $tempUserID)
+                        TextField("Enter your Sleeper username", text: $tempUsername)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
-                        Text("You can find this in your Sleeper profile URL or by searching your username")
+                            .autocapitalization(.none)
+                            .autocorrectionDisabled()
+                        Text("This is your @username displayed in Sleeper")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -41,15 +43,15 @@ struct SettingsView: View {
                     .padding(.vertical, 4)
                 }
                 
-                Section(header: Text("How to Find Your IDs")) {
+                Section(header: Text("How to Find Your Information")) {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .top, spacing: 12) {
                             Image(systemName: "1.circle.fill")
                                 .foregroundColor(.blue)
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("User ID")
+                                Text("Username")
                                     .fontWeight(.semibold)
-                                Text("Go to your Sleeper profile and look at the URL. Your User ID is the number after '/user/'")
+                                Text("This is your @username shown in your Sleeper profile and when other users mention you")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -108,12 +110,12 @@ struct SettingsView: View {
                     Button("Save") {
                         saveSettings()
                     }
-                    .disabled(tempUserID.isEmpty || tempLeagueID.isEmpty || isValidating)
+                    .disabled(tempUsername.isEmpty || tempLeagueID.isEmpty || isValidating)
                 }
             }
         }
         .onAppear {
-            tempUserID = viewModel.userID
+            tempUsername = viewModel.username
             tempLeagueID = viewModel.leagueID
         }
         .overlay {
@@ -124,7 +126,7 @@ struct SettingsView: View {
                 VStack(spacing: 16) {
                     ProgressView()
                         .scaleEffect(1.2)
-                    Text("Validating credentials...")
+                    Text("Validating username...")
                         .font(.headline)
                 }
                 .padding(24)
@@ -137,14 +139,14 @@ struct SettingsView: View {
     
     private func saveSettings() {
         isValidating = true
-        
+
         Task {
             do {
-                // Validate user exists by trying to fetch user info
-                _ = try await SleeperAPIClient().getUserInfo(username: tempUserID)
-                
+                // Validate username exists by trying to fetch user info
+                _ = try await SleeperAPIClient().getUserByUsername(username: tempUsername)
+
                 await MainActor.run {
-                    viewModel.userID = tempUserID
+                    viewModel.username = tempUsername
                     viewModel.leagueID = tempLeagueID
                     viewModel.saveConfiguration()
                     isValidating = false
@@ -152,7 +154,7 @@ struct SettingsView: View {
                 }
             } catch {
                 await MainActor.run {
-                    viewModel.errorMessage = "Failed to validate credentials. Please check your User ID and try again."
+                    viewModel.errorMessage = "Failed to validate username. Please check your username and try again."
                     isValidating = false
                 }
             }

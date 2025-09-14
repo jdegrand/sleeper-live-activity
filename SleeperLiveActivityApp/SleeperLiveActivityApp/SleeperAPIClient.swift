@@ -8,7 +8,7 @@
 import Foundation
 
 class SleeperAPIClient {
-    private let baseURL = "http://localhost:8000"
+    private let baseURL = "http://192.168.4.194:8000"
     private let session = URLSession.shared
     
     func registerUser(config: UserConfig) async throws {
@@ -90,6 +90,18 @@ class SleeperAPIClient {
 
     func getUser(userID: String) async throws -> [String: Any] {
         let url = URL(string: "\(baseURL)/user/\(userID)")!
+        let (data, response) = try await session.data(from: url)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw APIError.fetchFailed
+        }
+
+        return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+    }
+
+    func getUserByUsername(username: String) async throws -> [String: Any] {
+        let url = URL(string: "https://api.sleeper.app/v1/user/\(username)")!
         let (data, response) = try await session.data(from: url)
 
         guard let httpResponse = response as? HTTPURLResponse,

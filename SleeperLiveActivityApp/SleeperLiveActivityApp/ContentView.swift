@@ -128,7 +128,7 @@ struct ContentView: View {
                                 .font(.title2)
                                 .fontWeight(.semibold)
                             
-                            Text("Configure your Sleeper User ID and League ID to get started")
+                            Text("Configure your Sleeper Username and League ID to get started")
                                 .multilineTextAlignment(.center)
                                 .foregroundColor(.secondary)
                             
