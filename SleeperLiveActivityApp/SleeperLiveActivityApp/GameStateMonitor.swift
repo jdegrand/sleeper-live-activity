@@ -160,11 +160,7 @@ struct NFLGame: Identifiable, Equatable {
     let timeRemaining: String
 }
 
-// MARK: - Notification Names
-extension Notification.Name {
-    static let autoStartLiveActivity = Notification.Name("autoStartLiveActivity")
-    static let autoEndLiveActivity = Notification.Name("autoEndLiveActivity")
-}
+// MARK: - Notification Names (defined in SleeperViewModel.swift)
 
 // MARK: - Data Cache
 class DataCache {

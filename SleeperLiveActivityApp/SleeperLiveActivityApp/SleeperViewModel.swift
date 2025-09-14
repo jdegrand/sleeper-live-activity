@@ -19,6 +19,12 @@ class SleeperViewModel: ObservableObject {
     @Published var isLiveActivityActive: Bool = false
     @Published var currentPoints: Double = 0.0
     @Published var activePlayers: Int = 0
+    @Published var opponentPoints: Double = 0.0
+    @Published var teamName: String = "Your Team"
+    @Published var opponentTeamName: String = "Opponent"
+    @Published var userAvatarURL: String = ""
+    @Published var opponentAvatarURL: String = ""
+    @Published var gameStatus: String = "Starting..."
     @Published var lastUpdate: Date = Date()
     @Published var errorMessage: String?
     
@@ -67,19 +73,27 @@ class SleeperViewModel: ObservableObject {
         userID = UserDefaults.standard.string(forKey: userIDKey) ?? ""
         leagueID = UserDefaults.standard.string(forKey: leagueIDKey) ?? ""
         isConfigured = !userID.isEmpty && !leagueID.isEmpty
-        
+
         // Check if Live Activity is currently running
         checkLiveActivityStatus()
+
+        // Fetch data if configured
+        if isConfigured {
+            Task {
+                await fetchLatestData()
+            }
+        }
     }
     
     func saveConfiguration() {
         UserDefaults.standard.set(userID, forKey: userIDKey)
         UserDefaults.standard.set(leagueID, forKey: leagueIDKey)
         isConfigured = !userID.isEmpty && !leagueID.isEmpty
-        
-        // Register with backend if configured
+
+        // Fetch data and register with backend if configured
         if isConfigured {
             Task {
+                await fetchLatestData()
                 await registerWithBackend()
             }
         }
@@ -140,9 +154,12 @@ class SleeperViewModel: ObservableObject {
         let initialState = SleeperLiveActivityAttributes.ContentState(
             totalPoints: currentPoints,
             activePlayersCount: activePlayers,
-            teamName: "Your Team",
-            opponentPoints: 0.0, // Will be updated in the first fetch
-            gameStatus: "Starting...",
+            teamName: teamName,
+            opponentPoints: opponentPoints,
+            opponentTeamName: opponentTeamName,
+            userAvatarURL: userAvatarURL,
+            opponentAvatarURL: opponentAvatarURL,
+            gameStatus: gameStatus,
             lastUpdate: Date()
         )
         
@@ -179,8 +196,11 @@ class SleeperViewModel: ObservableObject {
         let finalState = SleeperLiveActivityAttributes.ContentState(
             totalPoints: currentPoints,
             activePlayersCount: activePlayers,
-            teamName: "Your Team",
-            opponentPoints: 0.0,
+            teamName: teamName,
+            opponentPoints: opponentPoints,
+            opponentTeamName: opponentTeamName,
+            userAvatarURL: userAvatarURL,
+            opponentAvatarURL: opponentAvatarURL,
             gameStatus: "Final",
             lastUpdate: Date()
         )
@@ -207,61 +227,88 @@ class SleeperViewModel: ObservableObject {
     
     @MainActor
     private func fetchLatestData() async {
-        guard isConfigured else { return }
-        
+        guard isConfigured else {
+            print("❌ fetchLatestData: Not configured")
+            return
+        }
+
+        print("🔄 fetchLatestData: Starting for userID: \(userID), leagueID: \(leagueID)")
+
         do {
             // Get current NFL state
+            print("🏈 Fetching NFL state...")
             let nflState = try await apiClient.getNFLState()
             let currentWeek = nflState["week"] as? Int ?? 1
-            
+            print("📅 Current NFL week: \(currentWeek)")
+
             // Get matchups
+            print("⚡ Fetching matchups for week \(currentWeek)...")
             let matchups = try await apiClient.getMatchups(leagueID: leagueID, week: currentWeek)
-            
+            print("🎯 Found \(matchups.count) matchups")
+
             // Get rosters to find user's team
+            print("👥 Fetching rosters...")
             let rosters = try await apiClient.getLeagueRosters(leagueID: leagueID)
-            
+            print("🏆 Found \(rosters.count) rosters")
+
             // Find user's roster and matchup data
             if let userRoster = rosters.first(where: { $0["owner_id"] as? String == userID }),
                let rosterID = userRoster["roster_id"] as? Int,
                let userMatchup = matchups.first(where: { $0["roster_id"] as? Int == rosterID }) {
-                
+
+                print("✅ Found user roster and matchup data")
                 await updateLiveActivity(with: matchups, userMatchup: userMatchup)
+            } else {
+                print("❌ Could not find user roster or matchup")
             }
-            
+
         } catch {
-            errorMessage = "Failed to fetch data: \(error.localizedDescription)"
+            let errorMessage = "Failed to fetch data: \(error.localizedDescription)"
+            print("💥 API Error: \(errorMessage)")
+            self.errorMessage = errorMessage
         }
     }
     
     private func updateLiveActivity(with matchups: [[String: Any]], userMatchup: [String: Any]) async {
-        guard let userRoster = matchups.first(where: { $0["roster_id"] as? Int == userMatchup["roster_id"] as? Int ?? 0 }) else { return }
-        
         let newPoints = userMatchup["points"] as? Double ?? 0.0
-        let newActivePlayers = (userRoster["starters"] as? [String])?.count ?? 0
-        let opponentPoints = findOpponentPoints(matchups: matchups, userMatchup: userMatchup)
+        let newOpponentPoints = findOpponentPoints(matchups: matchups, userMatchup: userMatchup)
+        let (userTeamName, opponentName) = await getTeamNames(matchups: matchups, userMatchup: userMatchup)
+        let newGameStatus = determineGameStatus()
         let now = Date()
-        
+
+        // Count active players (those currently in games)
+        let newActivePlayers = await countActivePlayers(userMatchup: userMatchup)
+
         // Update local state
         currentPoints = newPoints
         activePlayers = newActivePlayers
+        opponentPoints = newOpponentPoints
+        teamName = userTeamName
+        opponentTeamName = opponentName
+        gameStatus = newGameStatus
         lastUpdate = now
-        
+
+        print("📊 Updated scores - You: \(newPoints), Opponent: \(newOpponentPoints), Active: \(newActivePlayers)")
+
         // Update Live Activity if active
         if let activity = activity {
             let newState = SleeperLiveActivityAttributes.ContentState(
                 totalPoints: newPoints,
                 activePlayersCount: newActivePlayers,
-                teamName: "Your Team",
-                opponentPoints: opponentPoints,
-                gameStatus: "Live",
+                teamName: userTeamName,
+                opponentPoints: newOpponentPoints,
+                opponentTeamName: opponentName,
+                userAvatarURL: userAvatarURL,
+                opponentAvatarURL: opponentAvatarURL,
+                gameStatus: newGameStatus,
                 lastUpdate: now
             )
-            
+
             do {
                 try await activity.update(using: newState)
-                print("Live Activity updated successfully")
+                print("✅ Live Activity updated successfully")
             } catch {
-                print("Failed to update Live Activity: \(error)")
+                print("❌ Failed to update Live Activity: \(error)")
             }
         }
     }
@@ -282,7 +329,107 @@ class SleeperViewModel: ObservableObject {
         
         return 0.0
     }
-    
+
+    private func getTeamNames(matchups: [[String: Any]], userMatchup: [String: Any]) async -> (String, String) {
+        // Get roster information to find team names
+        do {
+            let rosters = try await apiClient.getLeagueRosters(leagueID: leagueID)
+            let userRosterID = userMatchup["roster_id"] as? Int ?? 0
+            let opponentRosterID = findOpponentRosterID(matchups: matchups, userMatchup: userMatchup)
+
+            // Find user roster
+            if let userRoster = rosters.first(where: { $0["roster_id"] as? Int == userRosterID }),
+               let userOwnerID = userRoster["owner_id"] as? String {
+
+                // Find opponent roster
+                if let opponentRoster = rosters.first(where: { $0["roster_id"] as? Int == opponentRosterID }),
+                   let opponentOwnerID = opponentRoster["owner_id"] as? String {
+
+                    // Get user info for avatars and display names
+                    async let userInfo = try? apiClient.getUser(userID: userOwnerID)
+                    async let opponentInfo = try? apiClient.getUser(userID: opponentOwnerID)
+
+                    let userResult = await userInfo
+                    let opponentResult = await opponentInfo
+
+                    // Update avatar URLs
+                    if let userAvatar = userResult?["avatar"] as? String {
+                        userAvatarURL = "https://sleepercdn.com/avatars/thumbs/\(userAvatar)"
+                    }
+
+                    if let opponentAvatar = opponentResult?["avatar"] as? String {
+                        opponentAvatarURL = "https://sleepercdn.com/avatars/thumbs/\(opponentAvatar)"
+                    }
+
+                    // Get display names or use usernames
+                    let userName = userResult?["display_name"] as? String ?? userResult?["username"] as? String ?? "Team \(userRosterID)"
+                    let opponentName = opponentResult?["display_name"] as? String ?? opponentResult?["username"] as? String ?? "Team \(opponentRosterID)"
+
+                    return (userName, opponentName)
+                }
+            }
+        } catch {
+            print("Failed to get team info: \(error)")
+        }
+
+        // Fallback to roster IDs
+        let userRosterID = userMatchup["roster_id"] as? Int ?? 0
+        let opponentRosterID = findOpponentRosterID(matchups: matchups, userMatchup: userMatchup)
+        let userTeam = "Team \(userRosterID)"
+        let opponentTeam = opponentRosterID > 0 ? "Team \(opponentRosterID)" : "Opponent"
+
+        return (userTeam, opponentTeam)
+    }
+
+    private func findOpponentRosterID(matchups: [[String: Any]], userMatchup: [String: Any]) -> Int {
+        guard let matchupID = userMatchup["matchup_id"] as? Int,
+              let userRosterID = userMatchup["roster_id"] as? Int else {
+            return 0
+        }
+
+        for matchup in matchups {
+            if let otherMatchupID = matchup["matchup_id"] as? Int,
+               let otherRosterID = matchup["roster_id"] as? Int,
+               otherMatchupID == matchupID && otherRosterID != userRosterID {
+                return otherRosterID
+            }
+        }
+
+        return 0
+    }
+
+    private func determineGameStatus() -> String {
+        // For now, determine status based on whether we have active players
+        if activePlayers > 0 {
+            return "Live"
+        } else if currentPoints > 0 {
+            return "Final"
+        } else {
+            return "Pre-Game"
+        }
+    }
+
+    private func countActivePlayers(userMatchup: [String: Any]) async -> Int {
+        // For now, return the count of starters
+        // In a real implementation, you'd check which players are currently in active games
+        // by cross-referencing with NFL game state
+
+        // Get rosters to find starters
+        do {
+            let rosters = try await apiClient.getLeagueRosters(leagueID: leagueID)
+            if let userRoster = rosters.first(where: { $0["owner_id"] as? String == userID }),
+               let starters = userRoster["starters"] as? [String] {
+                // For now, assume all starters are active if it's during game time
+                // In reality, you'd check NFL state to see which games are active
+                return starters.count
+            }
+        } catch {
+            print("Failed to get rosters for active player count: \(error)")
+        }
+
+        return 0
+    }
+
     private func getDeviceID() -> String {
         if let deviceID = UserDefaults.standard.string(forKey: deviceIDKey) {
             return deviceID
@@ -365,6 +512,12 @@ class SleeperViewModel: ObservableObject {
             print("Failed to notify backend of Live Activity stop: \(error)")
         }
     }
+}
+
+// MARK: - Notification Extensions
+extension Notification.Name {
+    static let autoStartLiveActivity = Notification.Name("autoStartLiveActivity")
+    static let autoEndLiveActivity = Notification.Name("autoEndLiveActivity")
 }
 
 // MARK: - Data Models

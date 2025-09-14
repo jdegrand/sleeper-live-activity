@@ -39,45 +39,23 @@ struct ContentView: View {
                     if viewModel.isConfigured {
                         // User Info
                         VStack(alignment: .leading, spacing: 8) {
-                            // Current Score
+                            // Widget Preview - using the same component as Live Activity
                             VStack(spacing: 12) {
-                                Text("Current Score")
+                                Text("Live Activity Preview")
                                     .font(.headline)
-                                
-                                HStack(spacing: 20) {
-                                    VStack {
-                                        Text("You")
-                                            .font(.subheadline)
-                                        Text(String(format: "%.1f", viewModel.currentPoints))
-                                            .font(.system(size: 32, weight: .bold, design: .rounded))
-                                            .foregroundColor(.blue)
-                                    }
-                                    
-                                    Divider()
-                                        .frame(height: 40)
-                                    
-                                    VStack {
-                                        Text("Active")
-                                            .font(.subheadline)
-                                        Text("\(viewModel.activePlayers)")
-                                            .font(.system(size: 32, weight: .bold, design: .rounded))
-                                            .foregroundColor(.green)
-                                    }
-                                }
-                                
-                                Divider()
-                                
-                                HStack {
-                                    Image(systemName: "clock")
-                                        .foregroundColor(.secondary)
-                                    Text("Updated: \(viewModel.lastUpdate, formatter: timeFormatter)")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
+
+                                SleeperWidgetView(state: SleeperLiveActivityAttributes.ContentState(
+                                    totalPoints: viewModel.currentPoints,
+                                    activePlayersCount: viewModel.activePlayers,
+                                    teamName: viewModel.teamName,
+                                    opponentPoints: viewModel.opponentPoints,
+                                    opponentTeamName: viewModel.opponentTeamName,
+                                    userAvatarURL: viewModel.userAvatarURL,
+                                    opponentAvatarURL: viewModel.opponentAvatarURL,
+                                    gameStatus: viewModel.gameStatus,
+                                    lastUpdate: viewModel.lastUpdate
+                                ))
                             }
-                            .padding()
-                            .background(Color(.systemGray6))
-                            .cornerRadius(12)
                             
                             // Live Activity Status
                             VStack(spacing: 12) {
