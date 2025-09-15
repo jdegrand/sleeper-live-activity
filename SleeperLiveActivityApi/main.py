@@ -415,6 +415,104 @@ def get_live_activity_status(device_id):
         })
     return jsonify({"active": False})
 
+@app.route('/devices', methods=['GET'])
+def list_devices():
+    """Get all registered device IDs and their details"""
+    devices = []
+    for device_id, config in app_state.user_configs.items():
+        device_info = {
+            "device_id": device_id,
+            "user_id": config.get("user_id"),
+            "league_id": config.get("league_id"),
+            "has_push_token": device_id in app_state.push_tokens,
+            "live_activity_active": device_id in app_state.active_live_activities
+        }
+
+        # Add live activity details if active
+        if device_id in app_state.active_live_activities:
+            activity = app_state.active_live_activities[device_id]
+            device_info.update({
+                "live_activity_started_at": activity["started_at"].isoformat(),
+                "live_activity_last_update": activity["last_update"].isoformat()
+            })
+
+        devices.append(device_info)
+
+    return jsonify({
+        "devices": devices,
+        "total_registered": len(app_state.user_configs),
+        "total_active_live_activities": len(app_state.active_live_activities)
+    })
+
+@app.route('/devices/<device_id>', methods=['GET'])
+def get_device_details(device_id):
+    """Get detailed information about a specific device"""
+    if device_id not in app_state.user_configs:
+        return jsonify({"error": "Device not found"}), 404
+
+    config = app_state.user_configs[device_id]
+    device_info = {
+        "device_id": device_id,
+        "user_id": config.get("user_id"),
+        "league_id": config.get("league_id"),
+        "has_push_token": device_id in app_state.push_tokens,
+        "live_activity_active": device_id in app_state.active_live_activities,
+        "last_score_data": app_state.last_scores.get(device_id)
+    }
+
+    # Add live activity details if active
+    if device_id in app_state.active_live_activities:
+        activity = app_state.active_live_activities[device_id]
+        device_info.update({
+            "live_activity_started_at": activity["started_at"].isoformat(),
+            "live_activity_last_update": activity["last_update"].isoformat(),
+            "live_activity_config": activity["user_config"]
+        })
+
+    return jsonify(device_info)
+
+@app.route('/live-activity/start-by-id/<device_id>', methods=['POST'])
+def start_live_activity_by_id(device_id):
+    """Start Live Activity for a specific device ID"""
+    if device_id not in app_state.user_configs:
+        return jsonify({"error": "Device not registered"}), 404
+
+    # Check if already active
+    if device_id in app_state.active_live_activities:
+        return jsonify({
+            "status": "already_active",
+            "message": f"Live Activity already active for device {device_id}",
+            "started_at": app_state.active_live_activities[device_id]["started_at"].isoformat()
+        })
+
+    user_config = app_state.user_configs[device_id]
+    live_activity_manager.start_live_activity(device_id, user_config)
+
+    return jsonify({
+        "status": "success",
+        "message": f"Live Activity started for device {device_id}",
+        "device_id": device_id,
+        "user_id": user_config.get("user_id"),
+        "league_id": user_config.get("league_id")
+    })
+
+@app.route('/live-activity/stop-by-id/<device_id>', methods=['POST'])
+def stop_live_activity_by_id(device_id):
+    """Stop Live Activity for a specific device ID"""
+    if device_id not in app_state.active_live_activities:
+        return jsonify({
+            "status": "not_active",
+            "message": f"No active Live Activity for device {device_id}"
+        })
+
+    live_activity_manager.end_live_activity(device_id)
+
+    return jsonify({
+        "status": "success",
+        "message": f"Live Activity stopped for device {device_id}",
+        "device_id": device_id
+    })
+
 def check_and_update_live_activities():
     """Background task to check for scoring updates and push to Live Activities"""
     logger.info("Checking for Live Activity updates...")
