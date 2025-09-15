@@ -1,67 +1,114 @@
-# Sleeper Live Activity Backend API
+# Sleeper Live Activity API
 
-This is the backend server for the Sleeper Fantasy Football Live Activity iOS app. It handles Sleeper API integration, Live Activity push notifications, and real-time scoring updates.
+This API provides real-time push notifications for Sleeper fantasy football Live Activities.
 
 ## Features
 
-- **Sleeper API Integration**: Fetches user data, leagues, rosters, matchups, and NFL state
-- **Live Activity Management**: Handles starting/stopping Live Activities and push notifications
-- **Real-time Updates**: Monitors scoring changes every 2 minutes during active games
-- **Caching**: Efficiently caches player data and NFL state to minimize API calls
-- **Push Notifications**: Sends Live Activity updates via APNS
+- ✅ APNS push notifications for Live Activity updates
+- ✅ Avatar image downloading and caching
+- ✅ Real-time score monitoring from Sleeper API
+- ✅ Efficient updates (only sends when data changes)
+- ✅ Base64 encoded avatar data in push payloads
 
 ## Setup
 
-1. Install dependencies:
+### 1. Install Dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Run the server:
+### 2. Configure APNS
+
+1. Go to [Apple Developer Portal](https://developer.apple.com)
+2. Navigate to **Certificates, Identifiers & Profiles**
+3. Go to **Keys** section
+4. Create a new key with **Apple Push Notifications service (APNs)** enabled
+5. Download the `.p8` file and note the Key ID
+6. Get your Team ID from the top right of the developer portal
+
+### 3. Environment Configuration
+
+Copy `.env.example` to `.env` and fill in your APNS credentials:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env`:
+```bash
+APNS_KEY_PATH=/path/to/your/AuthKey_XXXXXXXXXX.p8
+APNS_KEY_ID=1234567890
+APNS_TEAM_ID=ABCDEFGHIJ
+```
+
+### 4. Run the API
+
 ```bash
 python main.py
 ```
 
-The server will start on `http://localhost:8000`
+The API will run on `http://localhost:8000`
+
+## How It Works
+
+### Push Notification Flow
+
+1. **iOS App** starts Live Activity and registers with API
+2. **API** monitors Sleeper data every 2 minutes
+3. **API** detects score changes and downloads avatars
+4. **API** sends APNS push notification with:
+   - Updated scores
+   - Team names
+   - Base64 encoded avatar images
+   - Game status
+5. **Live Activity** receives push and updates UI immediately
+
+### Key Benefits
+
+- **Real-time updates**: No 30-second polling delays
+- **Battery efficient**: App doesn't need to run background tasks
+- **Always current avatars**: API downloads and includes avatar data
+- **Reliable**: Backend monitors continuously even when app is closed
 
 ## API Endpoints
 
-### User Management
-- `POST /register` - Register a user with Sleeper credentials and push token
-- `GET /user/{username}` - Get user information by username
-- `GET /user/{user_id}/leagues/{season}` - Get all leagues for a user
+- `POST /register` - Register device for Live Activity updates
+- `POST /live-activity/start/{device_id}` - Start monitoring for a device
+- `POST /live-activity/end/{device_id}` - Stop monitoring for a device
+- `GET /live-activity/status/{device_id}` - Check if monitoring is active
+- `GET /health` - Health check
 
-### League Data
-- `GET /league/{league_id}/rosters` - Get rosters for a league
-- `GET /league/{league_id}/matchups/{week}` - Get matchups for a specific week
+## Configuration Notes
 
-### NFL Data
-- `GET /players/nfl` - Get all NFL players (cached)
-- `GET /state/nfl` - Get current NFL state
+### APNS Environment
+- **Development**: Set `use_sandbox=True` in `main.py`
+- **Production**: Set `use_sandbox=False` in `main.py`
 
-### Live Activity
-- `POST /live-activity/start/{device_id}` - Start Live Activity for a device
-- `POST /live-activity/end/{device_id}` - End Live Activity for a device
-- `GET /live-activity/status/{device_id}` - Get Live Activity status
+### Update Frequency
+- Current: Every 2 minutes (configurable in `startup_tasks()`)
+- Recommended: 1-2 minutes during games, 5+ minutes off-season
 
-## Configuration
+### Avatar Caching
+- Images resized to 60x60px for optimal Live Activity performance
+- Cached in memory to avoid re-downloading
+- Included as base64 data in push notifications
 
-To enable APNS push notifications, you'll need to:
-1. Add your APNS certificate/key
-2. Configure the `LiveActivityManager` with proper APNS credentials
-3. Set up your iOS app's bundle ID and team ID
+## Troubleshooting
 
-## Architecture
+### APNS Issues
+- Verify `.p8` file path is correct
+- Check Key ID and Team ID are accurate
+- Ensure app bundle ID matches your provisioning profile
+- Check Xcode logs for APNS registration errors
 
-The server uses:
-- **FastAPI** for the REST API
-- **httpx** for async HTTP requests to Sleeper API
-- **APScheduler** for background tasks
-- **aioapns** for Apple Push Notifications (when configured)
+### No Push Notifications
+- Verify device is registered (`/live-activity/status/{device_id}`)
+- Check API logs for APNS errors
+- Ensure Live Activity is active on device
+- Verify network connectivity to Apple's APNS servers
 
-## Live Activity Flow
-
-1. iOS app registers user with backend
-2. Backend monitors Sleeper API for active games
-3. When user's players are active, Live Activity updates are pushed
-4. Updates continue until 30 minutes after last active player finishes
+### Missing Avatars
+- Check Sleeper API responses in logs
+- Verify avatar URLs are accessible
+- Check image download/encoding in API logs

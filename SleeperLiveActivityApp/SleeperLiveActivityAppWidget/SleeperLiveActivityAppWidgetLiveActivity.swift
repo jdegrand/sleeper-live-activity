@@ -63,6 +63,7 @@ struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
                         SharedAvatarView(
                             avatarURL: context.state.userAvatarURL,
                             localAvatarURL: context.state.userAvatarLocalURL,
+                            avatarData: context.state.userAvatarData,
                             placeholderColor: .blue,
                             size: 60
                         )
@@ -81,6 +82,7 @@ struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
                         SharedAvatarView(
                             avatarURL: context.state.opponentAvatarURL,
                             localAvatarURL: context.state.opponentAvatarLocalURL,
+                            avatarData: context.state.opponentAvatarData,
                             placeholderColor: .red,
                             size: 60
                         )
@@ -112,6 +114,7 @@ struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
                     SharedAvatarView(
                         avatarURL: context.state.userAvatarURL,
                         localAvatarURL: context.state.userAvatarLocalURL,
+                        avatarData: context.state.userAvatarData,
                         placeholderColor: .blue,
                         size: 24
                     )
@@ -127,6 +130,7 @@ struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
                     SharedAvatarView(
                         avatarURL: context.state.opponentAvatarURL,
                         localAvatarURL: context.state.opponentAvatarLocalURL,
+                        avatarData: context.state.opponentAvatarData,
                         placeholderColor: .red,
                         size: 24
                     )
@@ -135,6 +139,7 @@ struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
                 SharedAvatarView(
                     avatarURL: context.state.userAvatarURL,
                     localAvatarURL: context.state.userAvatarLocalURL,
+                    avatarData: context.state.userAvatarData,
                     placeholderColor: .blue,
                     size: 24
                 )

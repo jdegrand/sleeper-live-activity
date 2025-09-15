@@ -42,7 +42,6 @@ class SleeperViewModel: ObservableObject {
     private let apiClient = SleeperAPIClient()
     private var cancellables = Set<AnyCancellable>()
     @Published private(set) var activity: Activity<SleeperLiveActivityAttributes>?
-    private var refreshTimer: Timer?
     
     // Configuration keys
     private let usernameKey = "SleeperUsername"
@@ -203,13 +202,10 @@ class SleeperViewModel: ObservableObject {
             isLiveActivityActive = true
             errorMessage = nil
 
-            // Start 30-second refresh timer
-            startRefreshTimer()
-
             // Register with backend
             await registerWithBackend()
             await notifyBackendLiveActivityStarted()
-            
+
             // Start monitoring for updates
             startMonitoringActivityUpdates()
             
@@ -246,13 +242,14 @@ class SleeperViewModel: ObservableObject {
         // Clean up
         self.activity = nil
         isLiveActivityActive = false
-        stopRefreshTimer()
 
         // Notify backend
         await notifyBackendLiveActivityStopped()
     }
     
     func refreshData() {
+        // Manual refresh - primarily for testing
+        // Live Activity updates now come via push notifications from backend
         Task {
             await fetchLatestData()
         }
@@ -663,26 +660,9 @@ class SleeperViewModel: ObservableObject {
         return "\(activity.id).\(getDeviceID())"
     }
 
-    // MARK: - Refresh Timer
-    private func startRefreshTimer() {
-        stopRefreshTimer() // Stop any existing timer
-
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
-            guard let self = self, self.isLiveActivityActive else { return }
-            print("🔄 30-second refresh triggered")
-            Task {
-                await self.fetchLatestData()
-            }
-        }
-
-        print("⏰ Started 30-second refresh timer")
-    }
-
-    private func stopRefreshTimer() {
-        refreshTimer?.invalidate()
-        refreshTimer = nil
-        print("⏰ Stopped refresh timer")
-    }
+    // MARK: - Push Notification Support
+    // Live Activity updates now come via push notifications from the backend
+    // The backend monitors Sleeper API and sends updates when scores change
 
     // MARK: - Username Resolution
     @MainActor
