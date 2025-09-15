@@ -141,20 +141,63 @@ struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
                     }
                 }
             } compactLeading: {
-                Image(systemName: "sportscourt.fill")
-                    .foregroundColor(.blue)
-            } compactTrailing: {
-                VStack {
+                HStack {
+                    AsyncImage(url: URL(string: context.state.userAvatarURL)) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        Circle()
+                            .fill(Color.blue.opacity(0.3))
+                            .overlay(
+                                Image(systemName: "person.fill")
+                                    .foregroundColor(.blue)
+                                    .font(.caption2)
+                            )
+                    }
+                    .frame(width: 24, height: 24)
+                    .clipShape(Circle())
                     Text("\(context.state.totalPoints, specifier: "%.2f")")
                         .font(.caption)
                         .fontWeight(.semibold)
-                    Text("pts")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+                }
+            } compactTrailing: {
+                HStack {
+                    Text("\(context.state.opponentPoints, specifier: "%.2f")")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                    AsyncImage(url: URL(string: context.state.opponentAvatarURL)) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        Circle()
+                            .fill(Color.red.opacity(0.3))
+                            .overlay(
+                                Image(systemName: "person.fill")
+                                    .foregroundColor(.red)
+                                    .font(.caption2)
+                            )
+                    }
+                    .frame(width: 24, height: 24)
+                    .clipShape(Circle())
                 }
             } minimal: {
-                Image(systemName: "sportscourt.fill")
-                    .foregroundColor(.blue)
+                AsyncImage(url: URL(string: context.state.userAvatarURL)) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    Circle()
+                        .fill(Color.blue.opacity(0.3))
+                        .overlay(
+                            Image(systemName: "person.fill")
+                                .foregroundColor(.blue)
+                                .font(.caption2)
+                        )
+                }
+                .frame(width: 24, height: 24)
+                .clipShape(Circle())
             }
             .widgetURL(URL(string: "sleeperapp://"))
             .keylineTint(Color.blue)
