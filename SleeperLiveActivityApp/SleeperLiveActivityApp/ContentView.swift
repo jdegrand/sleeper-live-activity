@@ -26,7 +26,7 @@ struct ContentView: View {
                         .font(.largeTitle)
                         .fontWeight(.bold)
                     
-                    Text("Fantasy Football Live Scores")
+                    Text("\(viewModel.leagueName) Live Scores")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
@@ -44,17 +44,23 @@ struct ContentView: View {
                                 Text("Live Activity Preview")
                                     .font(.headline)
 
-                                SleeperWidgetView(state: SleeperLiveActivityAttributes.ContentState(
-                                    totalPoints: viewModel.currentPoints,
-                                    activePlayersCount: viewModel.activePlayers,
-                                    teamName: viewModel.teamName,
-                                    opponentPoints: viewModel.opponentPoints,
-                                    opponentTeamName: viewModel.opponentTeamName,
-                                    userAvatarURL: viewModel.userAvatarURL,
-                                    opponentAvatarURL: viewModel.opponentAvatarURL,
-                                    gameStatus: viewModel.gameStatus,
-                                    lastUpdate: viewModel.lastUpdate
-                                ))
+                                SleeperWidgetView(
+                                    state: SleeperLiveActivityAttributes.ContentState(
+                                        totalPoints: viewModel.currentPoints,
+                                        activePlayersCount: viewModel.activePlayers,
+                                        teamName: viewModel.teamName,
+                                        opponentPoints: viewModel.opponentPoints,
+                                        opponentTeamName: viewModel.opponentTeamName,
+                                        leagueName: viewModel.leagueName,
+                                        userAvatarURL: viewModel.userAvatarURL,
+                                        opponentAvatarURL: viewModel.opponentAvatarURL,
+                                        userAvatarLocalURL: viewModel.userAvatarLocalURL,
+                                        opponentAvatarLocalURL: viewModel.opponentAvatarLocalURL,
+                                        gameStatus: viewModel.gameStatus,
+                                        lastUpdate: viewModel.lastUpdate
+                                    ),
+                                    leagueName: viewModel.leagueName
+                                )
                             }
                             
                             // Live Activity Status

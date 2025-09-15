@@ -55,13 +55,25 @@ class SleeperAPIClient {
     func getLeagueRosters(leagueID: String) async throws -> [[String: Any]] {
         let url = URL(string: "\(baseURL)/league/\(leagueID)/rosters")!
         let (data, response) = try await session.data(from: url)
-        
+
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
             throw APIError.fetchFailed
         }
-        
+
         return try JSONSerialization.jsonObject(with: data) as? [[String: Any]] ?? []
+    }
+
+    func getLeagueInfo(leagueID: String) async throws -> [String: Any] {
+        let url = URL(string: "\(baseURL)/league/\(leagueID)")!
+        let (data, response) = try await session.data(from: url)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw APIError.fetchFailed
+        }
+
+        return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
     }
     
     func getMatchups(leagueID: String, week: Int) async throws -> [[String: Any]] {

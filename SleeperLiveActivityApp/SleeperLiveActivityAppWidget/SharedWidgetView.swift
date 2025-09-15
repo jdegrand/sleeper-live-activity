@@ -11,9 +11,11 @@ import ActivityKit
 // MARK: - Shared Widget View Component (Used by both app and Live Activity)
 public struct SleeperWidgetView: View {
     let state: SleeperLiveActivityAttributes.ContentState
+    let leagueName: String
 
-    public init(state: SleeperLiveActivityAttributes.ContentState) {
+    public init(state: SleeperLiveActivityAttributes.ContentState, leagueName: String = "Fantasy Football") {
         self.state = state
+        self.leagueName = leagueName
     }
 
     public var body: some View {
@@ -26,7 +28,7 @@ public struct SleeperWidgetView: View {
                     .foregroundColor(.orange)
                     .font(.title3)
 
-                Text("Fantasy Football")
+                Text(leagueName)
                     .font(.headline)
                     .fontWeight(.semibold)
 
@@ -45,30 +47,12 @@ public struct SleeperWidgetView: View {
             HStack(spacing: 20) {
                 // User team (left side)
                 HStack(spacing: 8) {
-                    ZStack {
-                        if let localPath = state.userAvatarLocalURL,
-                           let url = URL(string: localPath),
-                           let data = try? Data(contentsOf: url, options: [.mappedIfSafe]),
-                           let uiImage = UIImage(data: data) {
-                            Image(uiImage: uiImage)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 32, height: 32)
-                                .clipShape(Circle())
-                        } else {
-                            Circle()
-                                .fill(Color.blue.opacity(0.3))
-                                .frame(width: 32, height: 32)
-                                .overlay(
-                                    Image(systemName: "person.fill")
-                                        .foregroundColor(.blue)
-                                        .font(.caption)
-                                )
-                                .onAppear {
-                                    print("❌ Failed to load user image from: \(state.userAvatarLocalURL ?? "nil")")
-                                }
-                        }
-                    }
+                    SharedAvatarView(
+                        avatarURL: state.userAvatarURL,
+                        localAvatarURL: state.userAvatarLocalURL,
+                        placeholderColor: .blue,
+                        size: 32
+                    )
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(state.teamName)
@@ -97,30 +81,12 @@ public struct SleeperWidgetView: View {
                             .foregroundColor(.red)
                     }
 
-                    ZStack {
-                        if let localPath = state.opponentAvatarLocalURL,
-                           let url = URL(string: localPath),
-                           let data = try? Data(contentsOf: url, options: [.mappedIfSafe]),
-                           let uiImage = UIImage(data: data) {
-                            Image(uiImage: uiImage)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 32, height: 32)
-                                .clipShape(Circle())
-                        } else {
-                            Circle()
-                                .fill(Color.red.opacity(0.3))
-                                .frame(width: 32, height: 32)
-                                .overlay(
-                                    Image(systemName: "person.fill")
-                                        .foregroundColor(.red)
-                                        .font(.caption)
-                                )
-                                .onAppear {
-                                    print("❌ Failed to load opponent image from: \(state.opponentAvatarLocalURL ?? "nil")")
-                                }
-                        }
-                    }
+                    SharedAvatarView(
+                        avatarURL: state.opponentAvatarURL,
+                        localAvatarURL: state.opponentAvatarLocalURL,
+                        placeholderColor: .red,
+                        size: 32
+                    )
                 }
             }
 

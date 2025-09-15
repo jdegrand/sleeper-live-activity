@@ -50,7 +50,7 @@ extension SleeperLiveActivityAttributes.ContentState {
 struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: SleeperLiveActivityAttributes.self) { context in
-            SleeperWidgetView(state: context.state)
+            SleeperWidgetView(state: context.state, leagueName: context.state.leagueName)
                 .activityBackgroundTint(Color.clear)
                 .activitySystemActionForegroundColor(Color.primary)
 
@@ -59,104 +59,62 @@ struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
                 // Expanded UI goes here.  Compose the expanded UI through
                 // various regions, like leading/trailing/center/bottom
                 DynamicIslandExpandedRegion(.leading) {
-                    HStack(spacing: 6) {
-                        AsyncImage(url: URL(string: context.state.userAvatarURL)) { image in
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        } placeholder: {
-                            Circle()
-                                .fill(Color.blue.opacity(0.3))
-                                .overlay(
-                                    Image(systemName: "person.fill")
-                                        .foregroundColor(.blue)
-                                        .font(.caption2)
-                                )
-                        }
-                        .frame(width: 24, height: 24)
-                        .clipShape(Circle())
-
-                        VStack(alignment: .leading) {
-                            Text(context.state.teamName)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                            Text("\(context.state.totalPoints, specifier: "%.2f")")
-                                .font(.title3)
-                                .fontWeight(.bold)
-                                .foregroundColor(.blue)
-                        }
-                    }
+                    VStack(spacing: 6) {
+                        SharedAvatarView(
+                            avatarURL: context.state.userAvatarURL,
+                            localAvatarURL: context.state.userAvatarLocalURL,
+                            placeholderColor: .blue,
+                            size: 60
+                        )
+                        Text(context.state.teamName)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                        Text("\(context.state.totalPoints, specifier: "%.2f")")
+                            .font(.title3)
+                            .fontWeight(.bold)
+                            .foregroundColor(.blue)
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    HStack(spacing: 6) {
-                        VStack(alignment: .trailing) {
-                            Text(context.state.opponentTeamName)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                            Text("\(context.state.opponentPoints, specifier: "%.2f")")
-                                .font(.title3)
-                                .fontWeight(.bold)
-                                .foregroundColor(.red)
-                        }
-
-                        AsyncImage(url: URL(string: context.state.opponentAvatarURL)) { image in
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        } placeholder: {
-                            Circle()
-                                .fill(Color.red.opacity(0.3))
-                                .overlay(
-                                    Image(systemName: "person.fill")
-                                        .foregroundColor(.red)
-                                        .font(.caption2)
-                                )
-                        }
-                        .frame(width: 24, height: 24)
-                        .clipShape(Circle())
-                    }
+                    VStack(spacing: 6) {
+                        SharedAvatarView(
+                            avatarURL: context.state.opponentAvatarURL,
+                            localAvatarURL: context.state.opponentAvatarLocalURL,
+                            placeholderColor: .red,
+                            size: 60
+                        )
+                        Text(context.state.opponentTeamName)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                        Text("\(context.state.opponentPoints, specifier: "%.2f")")
+                            .font(.title3)
+                            .fontWeight(.bold)
+                            .foregroundColor(.red)
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 }
                 DynamicIslandExpandedRegion(.center) {
-                    VStack {
+                    VStack(spacing: 6) {
                         Text("vs")
-                            .font(.caption)
+                            .font(.title)
                             .foregroundColor(.secondary)
                         Image(systemName: "football.fill")
                             .foregroundColor(.orange)
                             .font(.title2)
-                    }
+                    }.frame(maxHeight: .infinity, alignment: .center)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    HStack {
-                        Image(systemName: "sportscourt.fill")
-                            .foregroundColor(.blue)
-                        Text("Fantasy Football - \(context.state.gameStatus)")
-                            .font(.caption)
-                        Spacer()
-                        Text("Updated \(formatTime(context.state.lastUpdate))")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
+                    
                 }
             } compactLeading: {
                 HStack {
-                    AsyncImage(url: URL(string: context.state.userAvatarURL)) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        Circle()
-                            .fill(Color.blue.opacity(0.3))
-                            .overlay(
-                                Image(systemName: "person.fill")
-                                    .foregroundColor(.blue)
-                                    .font(.caption2)
-                            )
-                    }
-                    .frame(width: 24, height: 24)
-                    .clipShape(Circle())
+                    SharedAvatarView(
+                        avatarURL: context.state.userAvatarURL,
+                        localAvatarURL: context.state.userAvatarLocalURL,
+                        placeholderColor: .blue,
+                        size: 24
+                    )
                     Text("\(context.state.totalPoints, specifier: "%.2f")")
                         .font(.caption)
                         .fontWeight(.semibold)
@@ -166,38 +124,20 @@ struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
                     Text("\(context.state.opponentPoints, specifier: "%.2f")")
                         .font(.caption)
                         .fontWeight(.semibold)
-                    AsyncImage(url: URL(string: context.state.opponentAvatarURL)) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        Circle()
-                            .fill(Color.red.opacity(0.3))
-                            .overlay(
-                                Image(systemName: "person.fill")
-                                    .foregroundColor(.red)
-                                    .font(.caption2)
-                            )
-                    }
-                    .frame(width: 24, height: 24)
-                    .clipShape(Circle())
+                    SharedAvatarView(
+                        avatarURL: context.state.opponentAvatarURL,
+                        localAvatarURL: context.state.opponentAvatarLocalURL,
+                        placeholderColor: .red,
+                        size: 24
+                    )
                 }
             } minimal: {
-                AsyncImage(url: URL(string: context.state.userAvatarURL)) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    Circle()
-                        .fill(Color.blue.opacity(0.3))
-                        .overlay(
-                            Image(systemName: "person.fill")
-                                .foregroundColor(.blue)
-                                .font(.caption2)
-                        )
-                }
-                .frame(width: 24, height: 24)
-                .clipShape(Circle())
+                SharedAvatarView(
+                    avatarURL: context.state.userAvatarURL,
+                    localAvatarURL: context.state.userAvatarLocalURL,
+                    placeholderColor: .blue,
+                    size: 24
+                )
             }
             .widgetURL(URL(string: "sleeperapp://"))
             .keylineTint(Color.blue)

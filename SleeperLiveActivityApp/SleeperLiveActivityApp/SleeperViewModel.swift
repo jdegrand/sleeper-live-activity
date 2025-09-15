@@ -23,11 +23,17 @@ class SleeperViewModel: ObservableObject {
     @Published var opponentPoints: Double = 0.0
     @Published var teamName: String = "Your Team"
     @Published var opponentTeamName: String = "Opponent"
+    @Published var leagueName: String = "Fantasy Football"
     @Published var userAvatarURL: String = ""
     @Published var opponentAvatarURL: String = ""
     @Published var userAvatarLocalURL: String? = nil
     @Published var opponentAvatarLocalURL: String? = nil
-    
+
+    // Avatar loading timestamps to prevent frequent re-downloads
+    private var lastUserAvatarUpdate: Date?
+    private var lastOpponentAvatarUpdate: Date?
+    private let avatarUpdateInterval: TimeInterval = 3600 // 1 hour
+
     private let imageLoader = ImageLoader.shared
     @Published var gameStatus: String = "Starting..."
     @Published var lastUpdate: Date = Date()
@@ -92,6 +98,7 @@ class SleeperViewModel: ObservableObject {
                 if userID.isEmpty {
                     await resolveUsernameToUserID()
                 }
+                await fetchLeagueInfo()
                 await fetchLatestData()
             }
         }
@@ -107,6 +114,7 @@ class SleeperViewModel: ObservableObject {
         if isConfigured {
             Task {
                 await resolveUsernameToUserID()
+                await fetchLeagueInfo()
                 await fetchLatestData()
                 await registerWithBackend()
             }
@@ -143,36 +151,42 @@ class SleeperViewModel: ObservableObject {
             errorMessage = "Please configure your Sleeper credentials first"
             return
         }
-        
+
         // Check if we already have an active activity
         if let currentActivity = Activity<SleeperLiveActivityAttributes>.activities.first(where: { $0.activityState == .active }) {
             self.activity = currentActivity
             isLiveActivityActive = true
             return
         }
-        
+
         let authInfo = ActivityAuthorizationInfo()
         print("Live Activities enabled: \(authInfo.areActivitiesEnabled)")
         print("Live Activities frequent updates enabled: \(authInfo.frequentPushesEnabled)")
-        
+
         guard authInfo.areActivitiesEnabled else {
             errorMessage = "Live Activities are not enabled. Please enable them in Settings > Face ID & Passcode > Live Activities."
             return
         }
-        
+
+        // Fetch latest data to ensure we have current info and avatars before starting
+        await fetchLatestData()
+
         let attributes = SleeperLiveActivityAttributes(
             userID: userID,
             leagueID: leagueID
         )
-        
+
         let initialState = SleeperLiveActivityAttributes.ContentState(
             totalPoints: currentPoints,
             activePlayersCount: activePlayers,
             teamName: teamName,
             opponentPoints: opponentPoints,
             opponentTeamName: opponentTeamName,
+            leagueName: leagueName,
             userAvatarURL: userAvatarURL,
             opponentAvatarURL: opponentAvatarURL,
+            userAvatarLocalURL: userAvatarLocalURL,
+            opponentAvatarLocalURL: opponentAvatarLocalURL,
             gameStatus: gameStatus,
             lastUpdate: Date()
         )
@@ -216,6 +230,7 @@ class SleeperViewModel: ObservableObject {
             teamName: teamName,
             opponentPoints: opponentPoints,
             opponentTeamName: opponentTeamName,
+            leagueName: leagueName,
             userAvatarURL: userAvatarURL,
             opponentAvatarURL: opponentAvatarURL,
             gameStatus: "Final",
@@ -242,7 +257,29 @@ class SleeperViewModel: ObservableObject {
             await fetchLatestData()
         }
     }
-    
+
+    @MainActor
+    private func fetchLeagueInfo() async {
+        guard isConfigured else {
+            print("❌ fetchLeagueInfo: Not configured")
+            return
+        }
+
+        print("🏆 Fetching league info for leagueID: \(leagueID)")
+
+        do {
+            let leagueInfo = try await apiClient.getLeagueInfo(leagueID: leagueID)
+            if let name = leagueInfo["name"] as? String {
+                leagueName = name
+                print("✅ League name set to: \(name)")
+            } else {
+                print("⚠️ No league name found in response")
+            }
+        } catch {
+            print("❌ Failed to fetch league info: \(error)")
+        }
+    }
+
     @MainActor
     private func fetchLatestData() async {
         guard isConfigured else {
@@ -297,14 +334,6 @@ class SleeperViewModel: ObservableObject {
         // Count active players (those currently in games)
         let newActivePlayers = await countActivePlayers(userMatchup: userMatchup)
 
-        // Update avatar URLs and download images if needed
-        if !userAvatarURL.isEmpty {
-            await loadAvatar(urlString: userAvatarURL, isUser: true)
-        }
-        if !opponentAvatarURL.isEmpty {
-            await loadAvatar(urlString: opponentAvatarURL, isUser: false)
-        }
-
         // Update local state on main thread
         await MainActor.run {
             currentPoints = newPoints
@@ -330,6 +359,7 @@ class SleeperViewModel: ObservableObject {
                 teamName: userTeamName,
                 opponentPoints: newOpponentPoints,
                 opponentTeamName: opponentName,
+                leagueName: leagueName,
                 userAvatarURL: userAvatarURL,
                 opponentAvatarURL: opponentAvatarURL,
                 userAvatarLocalURL: userLocalURL,
@@ -412,14 +442,41 @@ class SleeperViewModel: ObservableObject {
                     if let userAvatar = userResult?["avatar"] as? String {
                         tempUserAvatarURL = "https://sleepercdn.com/avatars/thumbs/\(userAvatar)"
                         print("📸 User avatar URL set: \(tempUserAvatarURL)")
-                        
+
+                        // Check if we need to update before changing the stored URL
+                        let shouldUpdateUserAvatar = await MainActor.run {
+                            return tempUserAvatarURL != self.userAvatarURL ||
+                                   self.lastUserAvatarUpdate == nil ||
+                                   Date().timeIntervalSince(self.lastUserAvatarUpdate!) > self.avatarUpdateInterval
+                        }
+
                         // Update the published property
                         await MainActor.run {
                             self.userAvatarURL = tempUserAvatarURL
                         }
 
-                        // Download and save as local file for Live Activity
-                        userLocalURL = await ImageCacheManager.shared.downloadAndCacheImageAsLocalURL(from: tempUserAvatarURL)
+                        if shouldUpdateUserAvatar {
+                            print("📸 Downloading user avatar (last update: \(lastUserAvatarUpdate?.description ?? "never"))")
+                            userLocalURL = await ImageCacheManager.shared.downloadAndCacheImageAsLocalURL(from: tempUserAvatarURL)
+                            await MainActor.run {
+                                self.lastUserAvatarUpdate = Date()
+                                self.userAvatarLocalURL = userLocalURL
+                            }
+                        } else {
+                            print("📸 Skipping user avatar download (recently updated)")
+                            // Use existing local URL if available, otherwise download it
+                            let existingLocalURL = await MainActor.run { self.userAvatarLocalURL }
+                            if existingLocalURL != nil {
+                                userLocalURL = existingLocalURL
+                            } else {
+                                print("📸 No cached local URL found, downloading user avatar")
+                                userLocalURL = await ImageCacheManager.shared.downloadAndCacheImageAsLocalURL(from: tempUserAvatarURL)
+                                await MainActor.run {
+                                    self.lastUserAvatarUpdate = Date()
+                                    self.userAvatarLocalURL = userLocalURL
+                                }
+                            }
+                        }
                     } else {
                         print("📸 No user avatar found")
                         await MainActor.run {
@@ -430,14 +487,41 @@ class SleeperViewModel: ObservableObject {
                     if let opponentAvatar = opponentResult?["avatar"] as? String {
                         tempOpponentAvatarURL = "https://sleepercdn.com/avatars/thumbs/\(opponentAvatar)"
                         print("📸 Opponent avatar URL set: \(tempOpponentAvatarURL)")
-                        
+
+                        // Check if we need to update before changing the stored URL
+                        let shouldUpdateOpponentAvatar = await MainActor.run {
+                            return tempOpponentAvatarURL != self.opponentAvatarURL ||
+                                   self.lastOpponentAvatarUpdate == nil ||
+                                   Date().timeIntervalSince(self.lastOpponentAvatarUpdate!) > self.avatarUpdateInterval
+                        }
+
                         // Update the published property
                         await MainActor.run {
                             self.opponentAvatarURL = tempOpponentAvatarURL
                         }
 
-                        // Download and save as local file for Live Activity
-                        opponentLocalURL = await ImageCacheManager.shared.downloadAndCacheImageAsLocalURL(from: tempOpponentAvatarURL)
+                        if shouldUpdateOpponentAvatar {
+                            print("📸 Downloading opponent avatar (last update: \(lastOpponentAvatarUpdate?.description ?? "never"))")
+                            opponentLocalURL = await ImageCacheManager.shared.downloadAndCacheImageAsLocalURL(from: tempOpponentAvatarURL)
+                            await MainActor.run {
+                                self.lastOpponentAvatarUpdate = Date()
+                                self.opponentAvatarLocalURL = opponentLocalURL
+                            }
+                        } else {
+                            print("📸 Skipping opponent avatar download (recently updated)")
+                            // Use existing local URL if available, otherwise download it
+                            let existingLocalURL = await MainActor.run { self.opponentAvatarLocalURL }
+                            if existingLocalURL != nil {
+                                opponentLocalURL = existingLocalURL
+                            } else {
+                                print("📸 No cached local URL found, downloading opponent avatar")
+                                opponentLocalURL = await ImageCacheManager.shared.downloadAndCacheImageAsLocalURL(from: tempOpponentAvatarURL)
+                                await MainActor.run {
+                                    self.lastOpponentAvatarUpdate = Date()
+                                    self.opponentAvatarLocalURL = opponentLocalURL
+                                }
+                            }
+                        }
                     } else {
                         await MainActor.run {
                             self.opponentAvatarURL = ""
