@@ -18,12 +18,12 @@ public struct SleeperLiveActivityAttributes: ActivityAttributes {
         public var opponentTeamName: String
         public var userAvatarURL: String
         public var opponentAvatarURL: String
-        public var userAvatarData: Data?
-        public var opponentAvatarData: Data?
+        public var userAvatarLocalURL: String?
+        public var opponentAvatarLocalURL: String?
         public var gameStatus: String
         public var lastUpdate: Date
 
-        public init(totalPoints: Double, activePlayersCount: Int, teamName: String, opponentPoints: Double, opponentTeamName: String, userAvatarURL: String, opponentAvatarURL: String, userAvatarData: Data? = nil, opponentAvatarData: Data? = nil, gameStatus: String, lastUpdate: Date) {
+        public init(totalPoints: Double, activePlayersCount: Int, teamName: String, opponentPoints: Double, opponentTeamName: String, userAvatarURL: String, opponentAvatarURL: String, userAvatarLocalURL: String? = nil, opponentAvatarLocalURL: String? = nil, gameStatus: String, lastUpdate: Date) {
             self.totalPoints = totalPoints
             self.activePlayersCount = activePlayersCount
             self.teamName = teamName
@@ -31,8 +31,8 @@ public struct SleeperLiveActivityAttributes: ActivityAttributes {
             self.opponentTeamName = opponentTeamName
             self.userAvatarURL = userAvatarURL
             self.opponentAvatarURL = opponentAvatarURL
-            self.userAvatarData = userAvatarData
-            self.opponentAvatarData = opponentAvatarData
+            self.userAvatarLocalURL = userAvatarLocalURL
+            self.opponentAvatarLocalURL = opponentAvatarLocalURL
             self.gameStatus = gameStatus
             self.lastUpdate = lastUpdate
         }

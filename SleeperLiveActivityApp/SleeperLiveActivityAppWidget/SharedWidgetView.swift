@@ -17,6 +17,9 @@ public struct SleeperWidgetView: View {
     }
 
     public var body: some View {
+        let _ = print("🔍 Widget received - User local URL: \(state.userAvatarLocalURL ?? "nil"), Opponent local URL: \(state.opponentAvatarLocalURL ?? "nil")")
+        let _ = checkFileExists(state.userAvatarLocalURL, "User")
+        let _ = checkFileExists(state.opponentAvatarLocalURL, "Opponent")
         VStack(spacing: 12) {
             HStack {
                 Image(systemName: "football.fill")
@@ -42,23 +45,30 @@ public struct SleeperWidgetView: View {
             HStack(spacing: 20) {
                 // User team (left side)
                 HStack(spacing: 8) {
-                    Group {
-                        if let image = ImageLoader.shared.getImageFromSharedContainer(url: state.userAvatarURL) {
-                            Image(uiImage: image)
+                    ZStack {
+                        if let localPath = state.userAvatarLocalURL,
+                           let url = URL(string: localPath),
+                           let data = try? Data(contentsOf: url, options: [.mappedIfSafe]),
+                           let uiImage = UIImage(data: data) {
+                            Image(uiImage: uiImage)
                                 .resizable()
-                                .aspectRatio(contentMode: .fill)
+                                .scaledToFill()
+                                .frame(width: 32, height: 32)
+                                .clipShape(Circle())
                         } else {
                             Circle()
                                 .fill(Color.blue.opacity(0.3))
+                                .frame(width: 32, height: 32)
                                 .overlay(
                                     Image(systemName: "person.fill")
                                         .foregroundColor(.blue)
                                         .font(.caption)
                                 )
+                                .onAppear {
+                                    print("❌ Failed to load user image from: \(state.userAvatarLocalURL ?? "nil")")
+                                }
                         }
                     }
-                    .frame(width: 32, height: 32)
-                    .clipShape(Circle())
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(state.teamName)
@@ -87,23 +97,30 @@ public struct SleeperWidgetView: View {
                             .foregroundColor(.red)
                     }
 
-                    Group {
-                        if let image = ImageLoader.shared.getImageFromSharedContainer(url: state.opponentAvatarURL) {
-                            Image(uiImage: image)
+                    ZStack {
+                        if let localPath = state.opponentAvatarLocalURL,
+                           let url = URL(string: localPath),
+                           let data = try? Data(contentsOf: url, options: [.mappedIfSafe]),
+                           let uiImage = UIImage(data: data) {
+                            Image(uiImage: uiImage)
                                 .resizable()
-                                .aspectRatio(contentMode: .fill)
+                                .scaledToFill()
+                                .frame(width: 32, height: 32)
+                                .clipShape(Circle())
                         } else {
                             Circle()
                                 .fill(Color.red.opacity(0.3))
+                                .frame(width: 32, height: 32)
                                 .overlay(
                                     Image(systemName: "person.fill")
                                         .foregroundColor(.red)
                                         .font(.caption)
                                 )
+                                .onAppear {
+                                    print("❌ Failed to load opponent image from: \(state.opponentAvatarLocalURL ?? "nil")")
+                                }
                         }
                     }
-                    .frame(width: 32, height: 32)
-                    .clipShape(Circle())
                 }
             }
 
@@ -127,6 +144,18 @@ public struct SleeperWidgetView: View {
 }
 
 // MARK: - Helper Functions
+public func checkFileExists(_ path: String?, _ label: String) -> Bool {
+    guard let path = path, !path.isEmpty else {
+        print("🛑 \(label) path is nil or empty")
+        return false
+    }
+    
+    let fileManager = FileManager.default
+    let fileExists = fileManager.fileExists(atPath: path)
+    print("\(label) file exists: \(fileExists) at path: \(path)")
+    return fileExists
+}
+
 public func formatTime(_ date: Date) -> String {
     let formatter = DateFormatter()
     formatter.timeStyle = .short

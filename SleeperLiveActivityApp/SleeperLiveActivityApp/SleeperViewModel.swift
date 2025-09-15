@@ -25,6 +25,10 @@ class SleeperViewModel: ObservableObject {
     @Published var opponentTeamName: String = "Opponent"
     @Published var userAvatarURL: String = ""
     @Published var opponentAvatarURL: String = ""
+    @Published var userAvatarLocalURL: String? = nil
+    @Published var opponentAvatarLocalURL: String? = nil
+    
+    private let imageLoader = ImageLoader.shared
     @Published var gameStatus: String = "Starting..."
     @Published var lastUpdate: Date = Date()
     @Published var errorMessage: String?
@@ -286,12 +290,20 @@ class SleeperViewModel: ObservableObject {
     private func updateLiveActivity(with matchups: [[String: Any]], userMatchup: [String: Any]) async {
         let newPoints = userMatchup["points"] as? Double ?? 0.0
         let newOpponentPoints = findOpponentPoints(matchups: matchups, userMatchup: userMatchup)
-        let (userTeamName, opponentName) = await getTeamNames(matchups: matchups, userMatchup: userMatchup)
+        let (userTeamName, opponentName, userLocalURL, opponentLocalURL) = await getTeamNames(matchups: matchups, userMatchup: userMatchup)
         let newGameStatus = determineGameStatus()
         let now = Date()
 
         // Count active players (those currently in games)
         let newActivePlayers = await countActivePlayers(userMatchup: userMatchup)
+
+        // Update avatar URLs and download images if needed
+        if !userAvatarURL.isEmpty {
+            await loadAvatar(urlString: userAvatarURL, isUser: true)
+        }
+        if !opponentAvatarURL.isEmpty {
+            await loadAvatar(urlString: opponentAvatarURL, isUser: false)
+        }
 
         // Update local state on main thread
         await MainActor.run {
@@ -308,13 +320,9 @@ class SleeperViewModel: ObservableObject {
 
         // Update Live Activity if active
         if let activity = activity {
-            print("🎯 Updating Live Activity with avatars - User: \(userAvatarURL), Opponent: \(opponentAvatarURL)")
-
-            // Get cached image data for Live Activity
-            let userImageData = ImageCacheManager.shared.getCachedImage(for: userAvatarURL)?.pngData()
-            let opponentImageData = ImageCacheManager.shared.getCachedImage(for: opponentAvatarURL)?.pngData()
-
-            print("🖼️ Image data - User: \(userImageData != nil ? "✅" : "❌"), Opponent: \(opponentImageData != nil ? "✅" : "❌")")
+            print("🎯 Updating Live Activity with avatars:")
+            print("   Remote URLs - User: \(userAvatarURL), Opponent: \(opponentAvatarURL)")
+            print("   Local URLs - User: \(userLocalURL ?? "nil"), Opponent: \(opponentLocalURL ?? "nil")")
 
             let newState = SleeperLiveActivityAttributes.ContentState(
                 totalPoints: newPoints,
@@ -324,8 +332,8 @@ class SleeperViewModel: ObservableObject {
                 opponentTeamName: opponentName,
                 userAvatarURL: userAvatarURL,
                 opponentAvatarURL: opponentAvatarURL,
-                userAvatarData: userImageData,
-                opponentAvatarData: opponentImageData,
+                userAvatarLocalURL: userLocalURL,
+                opponentAvatarLocalURL: opponentLocalURL,
                 gameStatus: newGameStatus,
                 lastUpdate: now
             )
@@ -356,7 +364,23 @@ class SleeperViewModel: ObservableObject {
         return 0.0
     }
 
-    private func getTeamNames(matchups: [[String: Any]], userMatchup: [String: Any]) async -> (String, String) {
+    private func loadAvatar(urlString: String, isUser: Bool) async {
+        await withCheckedContinuation { continuation in
+            ImageLoader.shared.loadImage(from: urlString) { [weak self] localPath in
+                DispatchQueue.main.async {
+                    if isUser {
+                        self?.userAvatarLocalURL = localPath
+                    } else {
+                        self?.opponentAvatarLocalURL = localPath
+                    }
+                    print("🔄 Updated \(isUser ? "user" : "opponent") avatar local path: \(localPath ?? "nil")")
+                    continuation.resume()
+                }
+            }
+        }
+    }
+    
+    private func getTeamNames(matchups: [[String: Any]], userMatchup: [String: Any]) async -> (String, String, String?, String?) {
         // Get roster information to find team names
         do {
             let rosters = try await apiClient.getLeagueRosters(leagueID: leagueID)
@@ -379,37 +403,59 @@ class SleeperViewModel: ObservableObject {
                     let opponentResult = await opponentInfo
 
                     // Update avatar URLs and pre-download for Live Activities
+                    var userLocalURL: String?
+                    var opponentLocalURL: String?
+
+                    var tempUserAvatarURL = ""
+                    var tempOpponentAvatarURL = ""
+
+                    if let userAvatar = userResult?["avatar"] as? String {
+                        tempUserAvatarURL = "https://sleepercdn.com/avatars/thumbs/\(userAvatar)"
+                        print("📸 User avatar URL set: \(tempUserAvatarURL)")
+                        
+                        // Update the published property
+                        await MainActor.run {
+                            self.userAvatarURL = tempUserAvatarURL
+                        }
+
+                        // Download and save as local file for Live Activity
+                        userLocalURL = await ImageCacheManager.shared.downloadAndCacheImageAsLocalURL(from: tempUserAvatarURL)
+                    } else {
+                        print("📸 No user avatar found")
+                        await MainActor.run {
+                            self.userAvatarURL = ""
+                        }
+                    }
+
+                    if let opponentAvatar = opponentResult?["avatar"] as? String {
+                        tempOpponentAvatarURL = "https://sleepercdn.com/avatars/thumbs/\(opponentAvatar)"
+                        print("📸 Opponent avatar URL set: \(tempOpponentAvatarURL)")
+                        
+                        // Update the published property
+                        await MainActor.run {
+                            self.opponentAvatarURL = tempOpponentAvatarURL
+                        }
+
+                        // Download and save as local file for Live Activity
+                        opponentLocalURL = await ImageCacheManager.shared.downloadAndCacheImageAsLocalURL(from: tempOpponentAvatarURL)
+                    } else {
+                        await MainActor.run {
+                            self.opponentAvatarURL = ""
+                        }
+                        print("📸 No opponent avatar found")
+                    }
+
                     await MainActor.run {
-                        if let userAvatar = userResult?["avatar"] as? String {
-                            userAvatarURL = "https://sleepercdn.com/avatars/thumbs/\(userAvatar)"
-                            print("📸 User avatar URL set: \(userAvatarURL)")
-
-                            // Pre-download and cache for Live Activity
-                            Task {
-                                await ImageCacheManager.shared.downloadAndCacheImage(from: userAvatarURL)
-                            }
-                        } else {
-                            print("📸 No user avatar found")
-                        }
-
-                        if let opponentAvatar = opponentResult?["avatar"] as? String {
-                            opponentAvatarURL = "https://sleepercdn.com/avatars/thumbs/\(opponentAvatar)"
-                            print("📸 Opponent avatar URL set: \(opponentAvatarURL)")
-
-                            // Pre-download and cache for Live Activity
-                            Task {
-                                await ImageCacheManager.shared.downloadAndCacheImage(from: opponentAvatarURL)
-                            }
-                        } else {
-                            print("📸 No opponent avatar found")
-                        }
+                        // Store the URLs for UI use
+                        self.userAvatarURL = tempUserAvatarURL
+                        self.opponentAvatarURL = tempOpponentAvatarURL
                     }
 
                     // Get display names or use usernames
                     let userName = userResult?["display_name"] as? String ?? userResult?["username"] as? String ?? "Team \(userRosterID)"
                     let opponentName = opponentResult?["display_name"] as? String ?? opponentResult?["username"] as? String ?? "Team \(opponentRosterID)"
 
-                    return (userName, opponentName)
+                    return (userName, opponentName, userLocalURL, opponentLocalURL)
                 }
             }
         } catch {
@@ -422,7 +468,7 @@ class SleeperViewModel: ObservableObject {
         let userTeam = "Team \(userRosterID)"
         let opponentTeam = opponentRosterID > 0 ? "Team \(opponentRosterID)" : "Opponent"
 
-        return (userTeam, opponentTeam)
+        return (userTeam, opponentTeam, nil, nil)
     }
 
     private func findOpponentRosterID(matchups: [[String: Any]], userMatchup: [String: Any]) -> Int {

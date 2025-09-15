@@ -41,6 +41,7 @@
 		308784BA2E772AFD0029EF97 /* SleeperLiveActivityAppWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SleeperLiveActivityAppWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		308784BC2E772AFD0029EF97 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		308784BE2E772AFD0029EF97 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		30A26B712E778B3D00542A22 /* SleeperLiveActivityAppWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SleeperLiveActivityAppWidgetExtension.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -92,6 +93,7 @@
 		3087849F2E772AB90029EF97 = {
 			isa = PBXGroup;
 			children = (
+				30A26B712E778B3D00542A22 /* SleeperLiveActivityAppWidgetExtension.entitlements */,
 				308784AA2E772AB90029EF97 /* SleeperLiveActivityApp */,
 				308784C02E772AFD0029EF97 /* SleeperLiveActivityAppWidget */,
 				308784BB2E772AFD0029EF97 /* Frameworks */,
@@ -435,6 +437,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = SleeperLiveActivityAppWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8AG9SQW5U6;
@@ -463,6 +466,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = SleeperLiveActivityAppWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8AG9SQW5U6;
