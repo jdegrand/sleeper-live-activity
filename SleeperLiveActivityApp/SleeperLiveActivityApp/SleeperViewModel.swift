@@ -84,12 +84,10 @@ class SleeperViewModel: ObservableObject {
         UserDefaults.standard.set(leagueID, forKey: leagueIDKey)
         isConfigured = !username.isEmpty && !leagueID.isEmpty
 
-        // Resolve username and fetch data if configured
+        // Only resolve username and register with backend - data fetching handled elsewhere
         if isConfigured {
             Task {
                 await resolveUsernameToUserID()
-                await fetchLeagueInfo()
-                await fetchLatestData()
                 await registerWithBackend()
             }
         }

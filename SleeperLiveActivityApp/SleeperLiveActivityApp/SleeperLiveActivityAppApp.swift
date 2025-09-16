@@ -250,15 +250,10 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 @main
 struct SleeperLiveActivityAppApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @StateObject private var gameMonitor = GameStateMonitor()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(gameMonitor)
-                .onAppear {
-                    gameMonitor.startMonitoring()
-                }
         }
     }
 }

@@ -172,7 +172,7 @@ struct ContentView: View {
             SettingsView(viewModel: viewModel)
         }
         .onAppear {
-            viewModel.loadConfiguration()
+            // Configuration already loaded in ViewModel init
         }
         .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
             Button("OK") {
