@@ -19,9 +19,6 @@ public struct SleeperWidgetView: View {
     }
 
     public var body: some View {
-        let _ = print("🔍 Widget received - User local URL: \(state.userAvatarLocalURL ?? "nil"), Opponent local URL: \(state.opponentAvatarLocalURL ?? "nil")")
-        let _ = checkFileExists(state.userAvatarLocalURL, "User")
-        let _ = checkFileExists(state.opponentAvatarLocalURL, "Opponent")
         VStack(spacing: 12) {
             HStack {
                 Image(systemName: "football.fill")
@@ -49,7 +46,6 @@ public struct SleeperWidgetView: View {
                 HStack(spacing: 8) {
                     SharedAvatarView(
                         avatarURL: state.userAvatarURL,
-                        localAvatarURL: state.userAvatarLocalURL,
                         placeholderColor: .blue,
                         size: 32
                     )
@@ -83,7 +79,6 @@ public struct SleeperWidgetView: View {
 
                     SharedAvatarView(
                         avatarURL: state.opponentAvatarURL,
-                        localAvatarURL: state.opponentAvatarLocalURL,
                         placeholderColor: .red,
                         size: 32
                     )

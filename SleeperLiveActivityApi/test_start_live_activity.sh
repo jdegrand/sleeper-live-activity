@@ -43,12 +43,9 @@ cat > /tmp/start_payload.json << EOF
       "leagueName": "Rungy",
       "userAvatarURL": "",
       "opponentAvatarURL": "",
-      "userAvatarLocalURL": null,
-      "opponentAvatarLocalURL": null,
-      "userAvatarData": null,
-      "opponentAvatarData": null,
       "gameStatus": "Live",
-      "lastUpdate": 1726358465
+      "lastUpdate": 1726358465,
+      "message": "Game is live!"
     },
     "alert": {
       "title": {

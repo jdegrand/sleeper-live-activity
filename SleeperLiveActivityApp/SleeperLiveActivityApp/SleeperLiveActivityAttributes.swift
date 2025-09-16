@@ -19,14 +19,11 @@ public struct SleeperLiveActivityAttributes: ActivityAttributes {
         public var leagueName: String
         public var userAvatarURL: String
         public var opponentAvatarURL: String
-        public var userAvatarLocalURL: String?
-        public var opponentAvatarLocalURL: String?
-        public var userAvatarData: String?  // Base64 encoded image data from push
-        public var opponentAvatarData: String?  // Base64 encoded image data from push
         public var gameStatus: String
         public var lastUpdate: Date
+        public var message: String?
 
-        public init(totalPoints: Double, activePlayersCount: Int, teamName: String, opponentPoints: Double, opponentTeamName: String, leagueName: String = "Fantasy Football", userAvatarURL: String, opponentAvatarURL: String, userAvatarLocalURL: String? = nil, opponentAvatarLocalURL: String? = nil, userAvatarData: String? = nil, opponentAvatarData: String? = nil, gameStatus: String, lastUpdate: Date) {
+        public init(totalPoints: Double, activePlayersCount: Int, teamName: String, opponentPoints: Double, opponentTeamName: String, leagueName: String = "Fantasy Football", userAvatarURL: String, opponentAvatarURL: String, gameStatus: String, lastUpdate: Date, message: String? = nil) {
             self.totalPoints = totalPoints
             self.activePlayersCount = activePlayersCount
             self.teamName = teamName
@@ -35,12 +32,9 @@ public struct SleeperLiveActivityAttributes: ActivityAttributes {
             self.leagueName = leagueName
             self.userAvatarURL = userAvatarURL
             self.opponentAvatarURL = opponentAvatarURL
-            self.userAvatarLocalURL = userAvatarLocalURL
-            self.opponentAvatarLocalURL = opponentAvatarLocalURL
-            self.userAvatarData = userAvatarData
-            self.opponentAvatarData = opponentAvatarData
             self.gameStatus = gameStatus
             self.lastUpdate = lastUpdate
+            self.message = message
         }
     }
 

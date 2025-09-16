@@ -43,7 +43,8 @@ class AppState:
         self.player_cache: Dict[str, Dict] = {}
         self.nfl_state_cache: Dict = {}
         self.user_configs: Dict[str, Dict] = {}
-        self.push_tokens: Dict[str, str] = {}
+        self.push_tokens: Dict[str, str] = {}  # device_id -> push-to-start token
+        self.live_activity_tokens: Dict[str, str] = {}  # device_id -> live activity token
         self.avatar_cache: Dict[str, str] = {}  # URL -> base64 data
         self.last_scores: Dict[str, Dict] = {}  # device_id -> last score data
 
@@ -502,11 +503,42 @@ def register_user():
         app_state.push_tokens[config.device_id] = config.push_token
         
         logger.info(f"Registered user {config.user_id} with device {config.device_id}")
-        logger.info(f"PUSH TOEN {config.push_token}")
+        logger.info(f"PUSH TOKEN {config.push_token}")
         return jsonify({"status": "success", "message": "User registered successfully"})
-    
+
     except Exception as e:
         logger.error(f"Registration failed: {e}")
+        return jsonify({"error": str(e)}), 400
+
+@app.route('/register-live-activity-token', methods=['POST'])
+def register_live_activity_token():
+    """Register a Live Activity push token for an already registered device"""
+    try:
+        data = request.get_json()
+        device_id = data['device_id']
+        live_activity_token = data['live_activity_token']
+        activity_id = data.get('activity_id', '')  # Optional activity ID for tracking
+
+        # Verify device is already registered
+        if device_id not in app_state.user_configs:
+            return jsonify({"error": "Device not registered. Register device first."}), 400
+
+        # Store Live Activity token
+        app_state.live_activity_tokens[device_id] = live_activity_token
+
+        logger.info(f"Registered Live Activity token for device {device_id}")
+        logger.info(f"LIVE ACTIVITY TOKEN {live_activity_token}")
+        if activity_id:
+            logger.info(f"Activity ID: {activity_id}")
+
+        return jsonify({
+            "status": "success",
+            "message": "Live Activity token registered successfully",
+            "device_id": device_id
+        })
+
+    except Exception as e:
+        logger.error(f"Live Activity token registration failed: {e}")
         return jsonify({"error": str(e)}), 400
 
 @app.route('/user/<username>', methods=['GET'])
@@ -870,10 +902,10 @@ async def check_and_update_live_activities():
                 "lastUpdate": datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
             }
 
-            # Send push notification
-            push_token = app_state.push_tokens.get(device_id)
-            if push_token:
-                await live_activity_manager.send_live_activity_update(push_token, activity_data)
+            # Send push notification using Live Activity token
+            live_activity_token = app_state.live_activity_tokens.get(device_id)
+            if live_activity_token:
+                await live_activity_manager.send_live_activity_update(live_activity_token, activity_data)
                 activity["last_update"] = datetime.now()
                 app_state.last_scores[device_id] = current_data
                 logger.info(f"Sent Live Activity update for device {device_id}")

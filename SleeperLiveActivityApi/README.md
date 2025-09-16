@@ -5,10 +5,10 @@ This API provides real-time push notifications for Sleeper fantasy football Live
 ## Features
 
 - ✅ APNS push notifications for Live Activity updates
-- ✅ Avatar image downloading and caching
 - ✅ Real-time score monitoring from Sleeper API
 - ✅ Efficient updates (only sends when data changes)
-- ✅ Base64 encoded avatar data in push payloads
+- ✅ Remote avatar URL support
+- ✅ Optional message field for notifications
 
 ## Setup
 
@@ -56,20 +56,22 @@ The API will run on `http://localhost:8000`
 
 1. **iOS App** starts Live Activity and registers with API
 2. **API** monitors Sleeper data every 2 minutes
-3. **API** detects score changes and downloads avatars
+3. **API** detects score changes
 4. **API** sends APNS push notification with:
    - Updated scores
    - Team names
-   - Base64 encoded avatar images
+   - Avatar URLs (for Sleeper profile images)
    - Game status
+   - Optional custom message
 5. **Live Activity** receives push and updates UI immediately
 
 ### Key Benefits
 
 - **Real-time updates**: No 30-second polling delays
 - **Battery efficient**: App doesn't need to run background tasks
-- **Always current avatars**: API downloads and includes avatar data
+- **Remote avatar support**: Uses Sleeper's avatar URLs directly
 - **Reliable**: Backend monitors continuously even when app is closed
+- **Flexible messaging**: Optional message field for custom notifications
 
 ## API Endpoints
 
@@ -172,10 +174,10 @@ curl -X GET http://localhost:8000/live-activity/status/your_device_id
 - Current: Every 2 minutes (configurable in `startup_tasks()`)
 - Recommended: 1-2 minutes during games, 5+ minutes off-season
 
-### Avatar Caching
-- Images resized to 60x60px for optimal Live Activity performance
-- Cached in memory to avoid re-downloading
-- Included as base64 data in push notifications
+### Avatar Support
+- Uses remote Sleeper avatar URLs directly
+- No local caching required
+- Lightweight approach for Live Activity performance
 
 ## Troubleshooting
 
@@ -191,7 +193,7 @@ curl -X GET http://localhost:8000/live-activity/status/your_device_id
 - Ensure Live Activity is active on device
 - Verify network connectivity to Apple's APNS servers
 
-### Missing Avatars
-- Check Sleeper API responses in logs
-- Verify avatar URLs are accessible
-- Check image download/encoding in API logs
+### Avatar Issues
+- Check Sleeper API responses for valid avatar URLs
+- Verify avatar URLs are accessible from Sleeper CDN
+- Avatar display depends on device's internet connection

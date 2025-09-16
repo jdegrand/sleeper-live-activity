@@ -28,7 +28,8 @@ extension SleeperLiveActivityAttributes.ContentState {
             userAvatarURL: "https://sleepercdn.com/avatars/thumbs/cc12ec49965eb7856f84d71cf85306af",
             opponentAvatarURL: "https://sleepercdn.com/avatars/thumbs/446042a71cea6b2353e5a7ad7d2a259d",
             gameStatus: "Live",
-            lastUpdate: Date()
+            lastUpdate: Date(),
+            message: "Game is live!"
         )
      }
 
@@ -42,7 +43,8 @@ extension SleeperLiveActivityAttributes.ContentState {
              userAvatarURL: "https://sleepercdn.com/avatars/thumbs/cc12ec49965eb7856f84d71cf85306af",
              opponentAvatarURL: "https://sleepercdn.com/avatars/thumbs/446042a71cea6b2353e5a7ad7d2a259d",
              gameStatus: "Final",
-             lastUpdate: Date()
+             lastUpdate: Date(),
+             message: "Game completed!"
          )
      }
 }
@@ -62,7 +64,6 @@ struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
                     VStack(spacing: 6) {
                         SharedAvatarView(
                             avatarURL: context.state.userAvatarURL,
-                            localAvatarURL: context.state.userAvatarLocalURL,
                             placeholderColor: .blue,
                             size: 60
                         )
@@ -80,7 +81,6 @@ struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
                     VStack(spacing: 6) {
                         SharedAvatarView(
                             avatarURL: context.state.opponentAvatarURL,
-                            localAvatarURL: context.state.opponentAvatarLocalURL,
                             placeholderColor: .red,
                             size: 60
                         )
@@ -111,7 +111,6 @@ struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
                 HStack {
                     SharedAvatarView(
                         avatarURL: context.state.userAvatarURL,
-                        localAvatarURL: context.state.userAvatarLocalURL,
                         placeholderColor: .blue,
                         size: 24
                     )
@@ -126,7 +125,6 @@ struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
                         .fontWeight(.semibold)
                     SharedAvatarView(
                         avatarURL: context.state.opponentAvatarURL,
-                        localAvatarURL: context.state.opponentAvatarLocalURL,
                         placeholderColor: .red,
                         size: 24
                     )
@@ -134,7 +132,6 @@ struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
             } minimal: {
                 SharedAvatarView(
                     avatarURL: context.state.userAvatarURL,
-                    localAvatarURL: context.state.userAvatarLocalURL,
                     placeholderColor: .blue,
                     size: 24
                 )

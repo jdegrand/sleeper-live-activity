@@ -154,10 +154,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             leagueName: contentState["leagueName"] as? String ?? "League",
             userAvatarURL: contentState["userAvatarURL"] as? String ?? "",
             opponentAvatarURL: contentState["opponentAvatarURL"] as? String ?? "",
-            userAvatarLocalURL: contentState["userAvatarLocalURL"] as? String,
-            opponentAvatarLocalURL: contentState["opponentAvatarLocalURL"] as? String,
             gameStatus: contentState["gameStatus"] as? String ?? "Live",
-            lastUpdate: Date()
+            lastUpdate: Date(),
+            message: contentState["message"] as? String
         )
 
         do {
@@ -171,8 +170,73 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
             print("✅ Live Activity started from push notification with ID: \(newActivity.id)")
 
+            // Observe the push token for this new Live Activity
+            Task {
+                for await pushToken in newActivity.pushTokenUpdates {
+                    let pushTokenString = pushToken.map { String(format: "%02.2hhx", $0) }.joined()
+                    print("🔑 Live Activity push token received: \(pushTokenString)")
+
+                    // Send the new push token to the server
+                    await sendLiveActivityTokenToServer(
+                        userID: userID,
+                        leagueID: leagueID,
+                        pushToken: pushTokenString,
+                        activityID: newActivity.id
+                    )
+                }
+            }
+
         } catch {
             print("❌ Failed to start Live Activity from push: \(error)")
+        }
+    }
+
+    // Send Live Activity push token to server
+    private func sendLiveActivityTokenToServer(userID: String, leagueID: String, pushToken: String, activityID: String) async {
+        print("📡 Sending Live Activity push token to server")
+
+        // Get device ID from UserDefaults (should be set when app registers)
+        guard let deviceID = UserDefaults.standard.string(forKey: "device_id") else {
+            print("❌ No device ID found in UserDefaults")
+            return
+        }
+
+        // Prepare request payload
+        let payload: [String: Any] = [
+            "device_id": deviceID,
+            "live_activity_token": pushToken,
+            "activity_id": activityID
+        ]
+
+        // API endpoint for Live Activity token registration
+        guard let url = URL(string: "http://localhost:8000/register-live-activity-token") else {
+            print("❌ Invalid server URL")
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+
+            if let httpResponse = response as? HTTPURLResponse {
+                print("📡 Server response status: \(httpResponse.statusCode)")
+
+                if httpResponse.statusCode == 200 {
+                    print("✅ Live Activity push token registered with server")
+                } else {
+                    print("❌ Server returned error status: \(httpResponse.statusCode)")
+                    if let responseBody = String(data: data, encoding: .utf8) {
+                        print("   Response: \(responseBody)")
+                    }
+                }
+            }
+        } catch {
+            print("❌ Failed to send Live Activity token to server: \(error)")
         }
     }
 

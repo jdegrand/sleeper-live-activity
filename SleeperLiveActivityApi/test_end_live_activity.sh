@@ -31,20 +31,17 @@ cat > /tmp/end_payload.json << EOF
     "event": "end",
     "dismissal-date": "$(date -v+30M +%s)",
     "content-state": {
-      "totalPoints": 0,
+      "totalPoints": 115.7,
       "activePlayersCount": 0,
       "teamName": "Durungus",
-      "opponentPoints": 0,
+      "opponentPoints": 102.3,
       "opponentTeamName": "Dorungus",
       "leagueName": "Football League",
       "userAvatarURL": "",
       "opponentAvatarURL": "",
-      "userAvatarLocalURL": null,
-      "opponentAvatarLocalURL": null,
-      "userAvatarData": null,
-      "opponentAvatarData": null,
-      "gameStatus": "No Games Active",
-      "lastUpdate": 1726358465
+      "gameStatus": "Final",
+      "lastUpdate": 1726358465,
+      "message": "Game completed!"
     }
   }
 }

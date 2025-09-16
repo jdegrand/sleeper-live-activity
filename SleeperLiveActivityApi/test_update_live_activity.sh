@@ -37,20 +37,17 @@ cat > /tmp/update_payload.json << EOF
     "timestamp": $(date +%s),
     "event": "update",
     "content-state": {
-      "totalPoints": 85.5,
-      "activePlayersCount": 9,
+      "totalPoints": 92.8,
+      "activePlayersCount": 8,
       "teamName": "Durungus",
-      "opponentPoints": 78.2,
+      "opponentPoints": 87.5,
       "opponentTeamName": "Dorungus",
       "leagueName": "Rungy",
       "userAvatarURL": "",
       "opponentAvatarURL": "",
-      "userAvatarLocalURL": null,
-      "opponentAvatarLocalURL": null,
-      "userAvatarData": null,
-      "opponentAvatarData": null,
       "gameStatus": "Live",
-      "lastUpdate": 1726358465
+      "lastUpdate": 1726358465,
+      "message": "Score updated!"
     }
   }
 }
