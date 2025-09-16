@@ -27,8 +27,13 @@ jwt="$unsigned_token.$signature"
 cat > /tmp/start_payload.json << EOF
 {
   "aps": {
-    "timestamp": "$(date +%s)",
+    "timestamp": $(date +%s),
     "event": "start",
+    "attributes-type": "SleeperLiveActivityAttributes",
+    "attributes": {
+      "userID": "test_user_id",
+      "leagueID": "test_league_id"
+    },
     "content-state": {
       "totalPoints": 85.5,
       "activePlayersCount": 9,
@@ -44,12 +49,27 @@ cat > /tmp/start_payload.json << EOF
       "opponentAvatarData": null,
       "gameStatus": "Live",
       "lastUpdate": 1726358465
+    },
+    "alert": {
+      "title": {
+          "loc-key": "%@ is on an adventure!",
+          "loc-args": [
+              "Power Panda"
+          ]
+      },
+      "body": {
+          "loc-key": "%@ found a sword!",
+          "loc-args": [
+              "Power Panda"
+          ]
+      },
+      "sound": "chime.aiff"
     }
   }
 }
 EOF
 
-echo "📤 Sstarting start notification..."
+echo "📤 Starting start notification..."
 cat /tmp/start_payload.json
 
 curl -v \

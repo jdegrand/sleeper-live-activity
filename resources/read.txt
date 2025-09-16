@@ -1,0 +1,69 @@
+Construct the payload that starts a Live Activity
+The JSON payload for starting a Live Activity with an ActivityKit push notification is similar to the payload you use for updates. However, it comes with the following requirements:
+
+Set the value of the event field to start.
+
+Include an alert in the JSON payload.
+
+Include the attributes-type and attributes keys.
+
+By including an alert in your JSON payload, you make sure a person gets alerted about the started Live Activity and avoid unexpectedly surprising them. The following sample payload starts a Live Activity for devices that aren’t running iOS 18 and iPadOS 18 or later:
+
+{
+    "aps": {
+        "timestamp": 1234,
+        "event": "start",
+        "content-state": {
+            "currentHealthLevel": 100,
+            "eventDescription": "Adventure has begun!"
+        },
+        "attributes-type": "AdventureAttributes",
+        "attributes": {
+            "hero": {
+                "name": "Power Panda",
+                "avatar": "U+1F43C",
+                "healthLevel": 100,
+                "heroType": "Forest Dweller",
+                "healthRecoveryRatePerHour": 0.25,
+                "url": "game:///panda",
+                "battleCode": "game:///panda/battle",
+                "level": 3,
+                "exp": 600,
+                "bio": "Power Panda loves eating bamboo shoots and leaves."
+            }
+        },
+        "alert": {
+            "title": {
+                "loc-key": "%@ is on an adventure!",
+                "loc-args": [
+                    "Power Panda"
+                ]
+            },
+            "body": {
+                "loc-key": "%@ found a sword!",
+                "loc-args": [
+                    "Power Panda"
+                ]
+            },
+            "sound": "chime.aiff"
+        }
+    }
+}
+For devices running iOS 18 and iPadOS or later, you can add input-push-channel with the appropriate channel ID to start a Live Activity and listen for updates on a channel. After you send this payload, you can send updates on the channel to update a Live Activity.
+
+       "input-push-channel": "dHN0LXNyY2gtY2hubA==",
+       "attributes-type": "AdventureAttributes",
+       "attributes": {
+           "currentHealthLevel": 100,
+           "eventDescription": "Adventure has begun!"
+       }
+Create a channel ID before you send this payload to a device and ensure that the channel ID is valid. If you send this payload to a device that doesn’t run iOS 18 and later, then the Live Activity will not start.
+
+For devices running iOS 18 and iPadOS 18 or later, you can add input-push-token: 1 to your payload to start a Live Activity and receive a new push token. After you receive a new push token, you can use it to send updates to a Live Activity.
+
+        "input-push-token": 1,
+        "attributes-type": "AdventureAttributes",
+        "attributes": {
+            "currentHealthLevel": 100,
+            "eventDescription": "Adventure has begun!"
+        }3

@@ -94,15 +94,7 @@ class GameStateMonitor: ObservableObject {
             userActivePlayerCount = activePlayerCount
             activeGames = currentActiveGames
             
-            // Auto-start Live Activity if players are active and it's not already running
-            if activePlayerCount > 0 && !isLiveActivityCurrentlyActive() {
-                await autoStartLiveActivity()
-            }
-            
-            // Auto-end Live Activity if no players are active for 30+ minutes
-            if activePlayerCount == 0 && isLiveActivityCurrentlyActive() {
-                await checkForLiveActivityTimeout()
-            }
+            // Note: Live Activities are now started via push-to-start tokens from the server
             
         } catch {
             print("Error checking game states: \(error)")
@@ -132,22 +124,6 @@ class GameStateMonitor: ObservableObject {
         return Activity<SleeperLiveActivityAttributes>.activities.contains { $0.activityState == .active }
     }
     
-    private func autoStartLiveActivity() async {
-        // This would trigger the same logic as manual start in SleeperViewModel
-        NotificationCenter.default.post(name: .autoStartLiveActivity, object: nil)
-    }
-    
-    private func checkForLiveActivityTimeout() async {
-        // Check if it's been 30+ minutes since last active player
-        let lastActiveTime = dataCache.getLastActivePlayerTime()
-        if let lastTime = lastActiveTime,
-           Date().timeIntervalSince(lastTime) > 1800 { // 30 minutes
-            NotificationCenter.default.post(name: .autoEndLiveActivity, object: nil)
-        } else if lastActiveTime == nil {
-            // First time seeing no active players, record the time
-            dataCache.setLastActivePlayerTime(Date())
-        }
-    }
 }
 
 // MARK: - Data Models

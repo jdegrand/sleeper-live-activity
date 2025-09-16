@@ -52,34 +52,11 @@ class SleeperViewModel: ObservableObject {
     init() {
         loadConfiguration()
         requestNotificationPermissions()
-        setupNotificationObservers()
+        if #available(iOS 17.2, *) {
+            subscribeToPushToStartTokens()
+        }
     }
     
-    private func setupNotificationObservers() {
-        NotificationCenter.default.addObserver(
-            forName: .autoStartLiveActivity,
-            object: nil,
-            queue: .main
-        ) { _ in
-            if !self.isLiveActivityActive {
-                Task {
-                    await self.startLiveActivity()
-                }
-            }
-        }
-
-        NotificationCenter.default.addObserver(
-            forName: .autoEndLiveActivity,
-            object: nil,
-            queue: .main
-        ) { _ in
-            if self.isLiveActivityActive {
-                Task {
-                    await self.stopLiveActivity()
-                }
-            }
-        }
-    }
     
     func loadConfiguration() {
         username = UserDefaults.standard.string(forKey: usernameKey) ?? ""
@@ -644,7 +621,8 @@ class SleeperViewModel: ObservableObject {
             userID: userID,
             leagueID: leagueID,
             pushToken: pushToken,
-            deviceID: deviceID
+            deviceID: deviceID,
+            pushToStartToken: nil
         )
 
         do {
@@ -752,6 +730,49 @@ class SleeperViewModel: ObservableObject {
             print("Failed to notify backend of Live Activity stop: \(error)")
         }
     }
+
+    @available(iOS 17.2, *)
+    private func subscribeToPushToStartTokens() {
+        Task {
+            for await token in Activity<SleeperLiveActivityAttributes>.pushToStartTokenUpdates {
+                print("📱 Received push-to-start token: \(token)")
+                await sendTokenToServer(token)
+            }
+        }
+    }
+
+    private func sendTokenToServer(_ token: Data) async {
+        let tokenString = token.map { String(format: "%02x", $0) }.joined()
+        let deviceID = getDeviceID()
+
+        print("🚀 Sending push-to-start token to server: \(tokenString)")
+        print("📋 COPY THIS TOKEN FOR YOUR TEST SCRIPT:")
+        print("📋 ACTIVITY_PUSH_TOKEN=\"\(tokenString)\"")
+        print("📋 ===================================")
+
+        guard isConfigured else {
+            print("❌ Not configured, skipping token send")
+            return
+        }
+
+        do {
+            // Get the Live Activity push token (if available)
+            let pushToken = await getPushToken() ?? ""
+
+            let config = UserConfig(
+                userID: userID,
+                leagueID: leagueID,
+                pushToken: pushToken,
+                deviceID: deviceID,
+                pushToStartToken: tokenString
+            )
+
+            try await apiClient.registerUser(config: config)
+            print("✅ Successfully sent push-to-start token to server")
+        } catch {
+            print("❌ Failed to send push-to-start token: \(error)")
+        }
+    }
 }
 
 // MARK: - Notification Extensions
@@ -766,11 +787,13 @@ struct UserConfig: Codable {
     let leagueID: String
     let pushToken: String
     let deviceID: String
-    
+    let pushToStartToken: String?
+
     enum CodingKeys: String, CodingKey {
         case userID = "user_id"
         case leagueID = "league_id"
         case pushToken = "push_token"
         case deviceID = "device_id"
+        case pushToStartToken = "push_to_start_token"
     }
 }
