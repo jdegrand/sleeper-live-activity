@@ -20,6 +20,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
         print("🚀 App launched, registered for remote notifications")
 
+        // Start observing Live Activity push token updates globally
+        startObservingLiveActivityTokens()
+
         // Check if app was launched from a remote notification
         if let remoteNotification = launchOptions?[UIApplication.LaunchOptionsKey.remoteNotification] as? [AnyHashable: Any] {
             print("📨 App launched from remote notification:")
@@ -169,22 +172,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             )
 
             print("✅ Live Activity started from push notification with ID: \(newActivity.id)")
-
-            // Observe the push token for this new Live Activity
-            Task {
-                for await pushToken in newActivity.pushTokenUpdates {
-                    let pushTokenString = pushToken.map { String(format: "%02.2hhx", $0) }.joined()
-                    print("🔑 Live Activity push token received: \(pushTokenString)")
-
-                    // Send the new push token to the server
-                    await sendLiveActivityTokenToServer(
-                        userID: userID,
-                        leagueID: leagueID,
-                        pushToken: pushTokenString,
-                        activityID: newActivity.id
-                    )
-                }
-            }
+            print("🔍 Global token observation will handle token registration")
 
         } catch {
             print("❌ Failed to start Live Activity from push: \(error)")
@@ -196,47 +184,58 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         print("📡 Sending Live Activity push token to server")
 
         // Get device ID from UserDefaults (should be set when app registers)
-        guard let deviceID = UserDefaults.standard.string(forKey: "device_id") else {
+        guard let deviceID = UserDefaults.standard.string(forKey: "SleeperDeviceID") else {
             print("❌ No device ID found in UserDefaults")
             return
         }
 
-        // Prepare request payload
-        let payload: [String: Any] = [
-            "device_id": deviceID,
-            "live_activity_token": pushToken,
-            "activity_id": activityID
-        ]
-
-        // API endpoint for Live Activity token registration
-        guard let url = URL(string: "http://localhost:8000/register-live-activity-token") else {
-            print("❌ Invalid server URL")
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let apiClient = SleeperAPIClient()
 
         do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+            try await apiClient.registerLiveActivityToken(
+                deviceID: deviceID,
+                liveActivityToken: pushToken,
+                activityID: activityID
+            )
+        } catch {
+            print("❌ Failed to send Live Activity token to server: \(error)")
+        }
+    }
 
-            let (data, response) = try await URLSession.shared.data(for: request)
+    // Global Live Activity token observation
+    private func startObservingLiveActivityTokens() {
+        Task {
+            print("🔍 Starting global Live Activity token observation...")
+            // Observe all activity updates to catch new activities
+            for await activity in Activity<SleeperLiveActivityAttributes>.activityUpdates {
+                print("📱 Activity update: \(activity.id) - \(activity.activityState)")
 
-            if let httpResponse = response as? HTTPURLResponse {
-                print("📡 Server response status: \(httpResponse.statusCode)")
+                // For new activities, start observing their push tokens
+                if activity.activityState == .active {
+                    Task {
+                        for await tokenData in activity.pushTokenUpdates {
+                            let token = tokenData.map { String(format: "%02x", $0) }.joined()
+                            print("📬 New Live Activity push token received: \(token)")
 
-                if httpResponse.statusCode == 200 {
-                    print("✅ Live Activity push token registered with server")
-                } else {
-                    print("❌ Server returned error status: \(httpResponse.statusCode)")
-                    if let responseBody = String(data: data, encoding: .utf8) {
-                        print("   Response: \(responseBody)")
+                            // Get user info from stored configuration
+                            if let deviceID = UserDefaults.standard.string(forKey: "SleeperDeviceID"),
+                               let userID = UserDefaults.standard.string(forKey: "SleeperUserID"),
+                               let leagueID = UserDefaults.standard.string(forKey: "SleeperLeagueID") {
+
+                                // Send to server
+                                await sendLiveActivityTokenToServer(
+                                    userID: userID,
+                                    leagueID: leagueID,
+                                    pushToken: token,
+                                    activityID: activity.id
+                                )
+                            } else {
+                                print("❌ Missing user configuration for token registration")
+                            }
+                        }
                     }
                 }
             }
-        } catch {
-            print("❌ Failed to send Live Activity token to server: \(error)")
         }
     }
 

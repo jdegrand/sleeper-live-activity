@@ -173,6 +173,33 @@ class SleeperAPIClient {
         
         return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
     }
+
+    func registerLiveActivityToken(deviceID: String, liveActivityToken: String, activityID: String) async throws {
+        let url = URL(string: "\(baseURL)/register-live-activity-token")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let payload: [String: Any] = [
+            "device_id": deviceID,
+            "live_activity_token": liveActivityToken,
+            "activity_id": activityID
+        ]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            if let responseBody = String(data: data, encoding: .utf8) {
+                print("❌ Server response: \(responseBody)")
+            }
+            throw APIError.registrationFailed
+        }
+
+        print("✅ Live Activity token registered successfully")
+    }
 }
 
 enum APIError: Error, LocalizedError {

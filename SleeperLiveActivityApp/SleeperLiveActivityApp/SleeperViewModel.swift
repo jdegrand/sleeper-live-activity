@@ -177,22 +177,7 @@ class SleeperViewModel: ObservableObject {
             self.activity = newActivity
             isLiveActivityActive = true
             errorMessage = nil
-
-            // Observe Live Activity push token and register it with backend
-            Task {
-                for await pushToken in newActivity.pushTokenUpdates {
-                    let pushTokenString = pushToken.map { String(format: "%02.2hhx", $0) }.joined()
-                    print("🔑 Live Activity push token received: \(pushTokenString)")
-
-                    // Send the Live Activity token to the server
-                    await sendLiveActivityTokenToServer(
-                        userID: userID,
-                        leagueID: leagueID,
-                        pushToken: pushTokenString,
-                        activityID: newActivity.id
-                    )
-                }
-            }
+            print("🔍 Global token observation will handle token registration")
 
             // Register with backend
             await registerWithBackend()
@@ -620,52 +605,6 @@ class SleeperViewModel: ObservableObject {
         } catch {
             print("❌ Failed to resolve username: \(error)")
             errorMessage = "Failed to resolve username: \(error.localizedDescription)"
-        }
-    }
-
-    // Send Live Activity push token to server
-    private func sendLiveActivityTokenToServer(userID: String, leagueID: String, pushToken: String, activityID: String) async {
-        print("📡 Sending Live Activity push token to server")
-
-        // Get device ID from UserDefaults
-        let deviceID = getDeviceID()
-
-        // Prepare request payload
-        let payload: [String: Any] = [
-            "device_id": deviceID,
-            "live_activity_token": pushToken,
-            "activity_id": activityID
-        ]
-
-        // API endpoint for Live Activity token registration
-        guard let url = URL(string: "http://localhost:8000/register-live-activity-token") else {
-            print("❌ Invalid server URL")
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-
-            let (data, response) = try await URLSession.shared.data(for: request)
-
-            if let httpResponse = response as? HTTPURLResponse {
-                print("📡 Server response status: \(httpResponse.statusCode)")
-
-                if httpResponse.statusCode == 200 {
-                    print("✅ Live Activity push token registered with server")
-                } else {
-                    print("❌ Server returned error status: \(httpResponse.statusCode)")
-                    if let responseBody = String(data: data, encoding: .utf8) {
-                        print("   Response: \(responseBody)")
-                    }
-                }
-            }
-        } catch {
-            print("❌ Failed to send Live Activity token to server: \(error)")
         }
     }
 
