@@ -27,12 +27,6 @@ class SleeperViewModel: ObservableObject {
     @Published var userAvatarURL: String = ""
     @Published var opponentAvatarURL: String = ""
 
-    // Avatar loading timestamps to prevent frequent re-downloads
-    private var lastUserAvatarUpdate: Date?
-    private var lastOpponentAvatarUpdate: Date?
-    private let avatarUpdateInterval: TimeInterval = 3600 // 1 hour
-
-    private let imageLoader = ImageLoader.shared
     @Published var gameStatus: String = "Starting..."
     @Published var lastUpdate: Date = Date()
     @Published var errorMessage: String?
@@ -53,6 +47,8 @@ class SleeperViewModel: ObservableObject {
         if #available(iOS 17.2, *) {
             subscribeToPushToStartTokens()
         }
+        // Start monitoring for live activity updates immediately
+        startMonitoringActivityUpdates()
     }
     
     
@@ -84,7 +80,7 @@ class SleeperViewModel: ObservableObject {
         UserDefaults.standard.set(leagueID, forKey: leagueIDKey)
         isConfigured = !username.isEmpty && !leagueID.isEmpty
 
-        // Only resolve username and register with backend - data fetching handled elsewhere
+        // Only resolve username and register device with backend - data fetching handled elsewhere
         if isConfigured {
             Task {
                 await resolveUsernameToUserID()
@@ -107,13 +103,21 @@ class SleeperViewModel: ObservableObject {
             if let currentActivity = Activity<SleeperLiveActivityAttributes>.activities.first(where: { $0.activityState == .active }) {
                 self.activity = currentActivity
                 isLiveActivityActive = true
-                
+
                 // Update local state from the activity
                 let state = currentActivity.content.state
                 currentPoints = state.totalPoints
                 activePlayers = state.activePlayersCount
                 lastUpdate = state.lastUpdate
+            } else {
+                // No active activities found
+                self.activity = nil
+                isLiveActivityActive = false
             }
+        } else {
+            // Live Activities not enabled
+            self.activity = nil
+            isLiveActivityActive = false
         }
     }
     
@@ -177,12 +181,8 @@ class SleeperViewModel: ObservableObject {
             errorMessage = nil
             print("🔍 Global token observation will handle token registration")
 
-            // Register with backend
-            await registerWithBackend()
-            await notifyBackendLiveActivityStarted()
-
-            // Start monitoring for updates
-            startMonitoringActivityUpdates()
+            // Register the live activity token with backend
+            await registerLiveActivityTokenWithBackend(for: newActivity)
 
         } catch {
             print("❌ Failed to start Live Activity: \(error)")
@@ -235,6 +235,7 @@ class SleeperViewModel: ObservableObject {
     func refreshData() {
         // Manual refresh - primarily for testing
         // Live Activity updates now come via push notifications from backend
+        checkLiveActivityStatus() // Also refresh the live activity status
         Task {
             await fetchLatestData()
         }
@@ -397,34 +398,26 @@ class SleeperViewModel: ObservableObject {
                     let opponentResult = await opponentInfo
 
                     // Update avatar URLs
-                    if let userAvatar = userResult?["avatar"] as? String {
-                        let userAvatarURL = "https://sleepercdn.com/avatars/thumbs/\(userAvatar)"
+                    if let userAvatarUrl = userResult?["avatar"] as? String {
                         await MainActor.run {
-                            self.userAvatarURL = userAvatarURL
+                            self.userAvatarURL = userAvatarUrl
                         }
 
                         // Download to cache for main app usage
-                        await ImageCacheManager.shared.downloadAndCacheImageAsLocalURL(from: userAvatarURL)
-                        await MainActor.run {
-                            self.lastUserAvatarUpdate = Date()
-                        }
+                        await ImageCacheManager.shared.downloadAndCacheImageAsLocalURL(from: userAvatarUrl)
                     } else {
                         await MainActor.run {
                             self.userAvatarURL = ""
                         }
                     }
 
-                    if let opponentAvatar = opponentResult?["avatar"] as? String {
-                        let opponentAvatarURL = "https://sleepercdn.com/avatars/thumbs/\(opponentAvatar)"
+                    if let opponentAvatarUrl = opponentResult?["avatar"] as? String {
                         await MainActor.run {
-                            self.opponentAvatarURL = opponentAvatarURL
+                            self.opponentAvatarURL = opponentAvatarUrl
                         }
 
                         // Download to cache for main app usage
                         await ImageCacheManager.shared.downloadAndCacheImageAsLocalURL(from: opponentAvatarURL)
-                        await MainActor.run {
-                            self.lastOpponentAvatarUpdate = Date()
-                        }
                     } else {
                         await MainActor.run {
                             self.opponentAvatarURL = ""
@@ -511,16 +504,10 @@ class SleeperViewModel: ObservableObject {
     }
     
     private func registerWithBackend() async {
-        guard let activity = activity else {
-            print("❌ No activity available for registration")
-            return
-        }
+        print("🚀 Starting initial device registration...")
 
-        print("🚀 Starting backend registration...")
-
-        // Get the Live Activity specific push token
-        let pushToken = await getPushToken(for: activity)
         let deviceID = getDeviceID()
+        let pushToken = await getPushToken() ?? ""
 
         print("📱 Device ID: \(deviceID)")
         print("👤 User ID: \(userID)")
@@ -537,10 +524,33 @@ class SleeperViewModel: ObservableObject {
 
         do {
             try await apiClient.registerUser(config: config)
-            print("✅ Successfully registered with backend")
+            print("✅ Successfully registered device with backend")
         } catch {
-            print("❌ Failed to register with backend: \(error)")
-            errorMessage = "Backend registration failed: \(error.localizedDescription)"
+            print("❌ Failed to register device with backend: \(error)")
+            errorMessage = "Device registration failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func registerLiveActivityTokenWithBackend(for activity: Activity<SleeperLiveActivityAttributes>) async {
+        print("🎯 Registering live activity token with backend...")
+
+        // Get the Live Activity specific push token
+        let liveActivityToken = await getPushToken(for: activity)
+        let deviceID = getDeviceID()
+
+        print("📱 Device ID: \(deviceID)")
+        print("🔑 Live Activity Token: \(liveActivityToken)")
+
+        do {
+            try await apiClient.registerLiveActivityToken(
+                deviceID: deviceID,
+                liveActivityToken: liveActivityToken,
+                activityID: activity.id
+            )
+            print("✅ Successfully registered live activity token with backend")
+        } catch {
+            print("❌ Failed to register live activity token with backend: \(error)")
+            errorMessage = "Live activity token registration failed: \(error.localizedDescription)"
         }
     }
     
@@ -555,10 +565,20 @@ class SleeperViewModel: ObservableObject {
                         self.activity = nil
                         self.isLiveActivityActive = false
                     }
+                    // Notify backend that activity ended
+                    await notifyBackendLiveActivityStopped()
                 } else if activity.activityState == .active {
-                    await MainActor.run {
+                    let wasNewActivity = await MainActor.run {
+                        let wasNew = self.activity?.id != activity.id
                         self.activity = activity
                         self.isLiveActivityActive = true
+                        return wasNew
+                    }
+
+                    // If this is a new activity (started remotely), register its token
+                    if wasNewActivity {
+                        print("🔍 Detected remotely started live activity: \(activity.id)")
+                        await registerLiveActivityTokenWithBackend(for: activity)
                     }
                 }
             }

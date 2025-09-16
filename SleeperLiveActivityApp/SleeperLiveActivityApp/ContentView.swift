@@ -173,6 +173,8 @@ struct ContentView: View {
         }
         .onAppear {
             // Configuration already loaded in ViewModel init
+            // Refresh live activity status in case it changed while app was in background
+            viewModel.refreshData()
         }
         .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
             Button("OK") {

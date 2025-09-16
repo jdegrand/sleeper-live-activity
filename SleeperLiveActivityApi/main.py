@@ -606,6 +606,15 @@ def register_live_activity_token():
         if activity_id:
             logger.info(f"Activity ID: {activity_id}")
 
+        # Add to active live activities for backend tracking (app-initiated start)
+        user_config = app_state.user_configs[device_id]
+        app_state.active_live_activities[device_id] = {
+            "user_config": user_config,
+            "started_at": datetime.now(),
+            "last_update": datetime.now()
+        }
+        logger.info(f"Added device {device_id} to active live activities (app-initiated)")
+
         return jsonify({"status": "success", "message": "Live Activity token registered successfully", "device_id": device_id})
     except Exception as e:
         logger.exception("Live Activity token registration failed")
@@ -716,6 +725,8 @@ def end_live_activity(device_id):
         del app_state.active_live_activities[device_id]
     if device_id in app_state.last_scores:
         del app_state.last_scores[device_id]
+    if device_id in app_state.live_activity_tokens:
+        del app_state.live_activity_tokens[device_id]
 
     return jsonify({"status": "success", "message": "Live Activity ended"})
 
@@ -831,11 +842,13 @@ def stop_live_activity_by_id(device_id):
             logger.exception("Failed to send APNS end notification")
     else:
         logger.warning(f"No Live Activity token available for device {device_id}")
-    # remove activity
+    # remove activity and clean up tokens
     if device_id in app_state.active_live_activities:
         del app_state.active_live_activities[device_id]
     if device_id in app_state.last_scores:
         del app_state.last_scores[device_id]
+    if device_id in app_state.live_activity_tokens:
+        del app_state.live_activity_tokens[device_id]
     return jsonify({"status": "success", "message": f"Live Activity stopped for device {device_id}", "device_id": device_id})
 
 # -----------------------
