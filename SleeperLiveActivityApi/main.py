@@ -14,6 +14,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from aioapns import APNs, NotificationRequest, PushType
 from aioapns.common import NotificationResult
 import aiohttp
+import concurrent.futures
 from PIL import Image
 import io
 from dotenv import load_dotenv
@@ -48,6 +49,9 @@ class AppState:
 
 app_state = AppState()
 scheduler = BackgroundScheduler()
+
+# Create dedicated event loop and thread pool for APNS operations
+apns_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
 # Data models as simple classes
 class UserConfig:
@@ -182,6 +186,19 @@ async def download_and_cache_avatar(url: str) -> Optional[str]:
         logger.error(f"Failed to download avatar {url}: {e}")
         return None
 
+def run_apns_operation(coro):
+    """Run APNS operation in dedicated thread with new event loop"""
+    def run_in_thread():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
+    future = apns_executor.submit(run_in_thread)
+    return future.result(timeout=30)  # 30 second timeout
+
 class LiveActivityManager:
     def __init__(self):
         self.apns_client = None
@@ -239,36 +256,142 @@ class LiveActivityManager:
             logger.warning("APNS client not initialized. Push notifications will not work.")
 
     async def send_live_activity_update(self, push_token: str, activity_data: Dict):
-        """Send Live Activity update via APNS"""
+        """Send Live Activity update via APNS with retry logic"""
         if not self.apns_client:
             logger.warning("APNS client not initialized, skipping push notification")
             return
 
-        try:
-            # Create Live Activity push payload
-            payload = {
-                "aps": {
-                    "timestamp": int(datetime.now().timestamp()),
-                    "event": "update",
-                    "content-state": activity_data
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Create Live Activity push payload according to Apple docs
+                payload = {
+                    "aps": {
+                        "timestamp": int(datetime.now().timestamp()),
+                        "event": "update",
+                        "content-state": activity_data
+                    }
                 }
+
+                logger.info(f"Sending APNS notification (attempt {attempt + 1}/{max_retries})")
+                logger.debug(f"Push token: {push_token[:20]}...")
+                logger.debug(f"Payload: {payload}")
+
+                request = NotificationRequest(
+                    device_token=push_token,
+                    message=payload,
+                    push_type=PushType.LIVEACTIVITY,
+                    priority=10  # Immediate delivery for Live Activities
+                )
+
+                result = await self.apns_client.send_notification(request)
+
+                if result.is_successful:
+                    logger.info(f"✅ Successfully sent Live Activity update to {push_token[:20]}...")
+                    return
+                else:
+                    logger.error(f"❌ Failed to send Live Activity update (attempt {attempt + 1}): {result.description}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(2 ** attempt)  # Exponential backoff
+
+            except Exception as e:
+                logger.error(f"❌ Error sending Live Activity update (attempt {attempt + 1}): {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                else:
+                    logger.error(f"❌ Failed to send notification after {max_retries} attempts")
+
+    async def get_initial_activity_data(self, user_config: Dict) -> Dict:
+        """Get initial Live Activity data for a user"""
+        try:
+            # Get current NFL state
+            nfl_state = sleeper_client.get_nfl_state()
+            current_week = nfl_state.get("week", 1)
+
+            # Get user's matchup data
+            matchups = sleeper_client.get_matchups(user_config["league_id"], current_week)
+            rosters = sleeper_client.get_league_rosters(user_config["league_id"])
+
+            # Find user's roster
+            user_roster = None
+            for roster in rosters:
+                if roster.get("owner_id") == user_config["user_id"]:
+                    user_roster = roster
+                    break
+
+            if not user_roster:
+                return {
+                    "totalPoints": 0.0,
+                    "activePlayersCount": 0,
+                    "teamName": "Your Team",
+                    "opponentPoints": 0.0,
+                    "opponentTeamName": "Opponent",
+                    "leagueName": "Fantasy Football",
+                    "userAvatarURL": "",
+                    "opponentAvatarURL": "",
+                    "gameStatus": "Live",
+                    "lastUpdate": datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+                }
+
+            # Find user's matchup and opponent
+            user_matchup = None
+            opponent_points = 0.0
+            opponent_name = "Opponent"
+
+            for matchup in matchups:
+                if matchup.get("roster_id") == user_roster.get("roster_id"):
+                    user_matchup = matchup
+                    break
+
+            if user_matchup:
+                matchup_id = user_matchup.get("matchup_id")
+                for matchup in matchups:
+                    if (matchup.get("matchup_id") == matchup_id and
+                        matchup.get("roster_id") != user_roster.get("roster_id")):
+                        opponent_points = matchup.get("points", 0.0)
+
+                        # Get opponent info
+                        for roster in rosters:
+                            if roster.get("roster_id") == matchup.get("roster_id"):
+                                opponent_owner_id = roster.get("owner_id")
+                                if opponent_owner_id:
+                                    try:
+                                        opponent_info_response = requests.get(f"https://api.sleeper.app/v1/user/{opponent_owner_id}")
+                                        if opponent_info_response.status_code == 200:
+                                            opponent_info = opponent_info_response.json()
+                                            opponent_name = opponent_info.get("display_name") or opponent_info.get("username", "Opponent")
+                                    except:
+                                        pass
+                                break
+                        break
+
+            return {
+                "totalPoints": user_matchup.get("points", 0.0) if user_matchup else 0.0,
+                "activePlayersCount": len(user_roster.get("starters", [])),
+                "teamName": f"Team {user_roster.get('roster_id', 'Unknown')}",
+                "opponentPoints": opponent_points,
+                "opponentTeamName": opponent_name,
+                "leagueName": "Fantasy Football",
+                "userAvatarURL": "",
+                "opponentAvatarURL": "",
+                "gameStatus": "Live",
+                "lastUpdate": datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
             }
 
-            request = NotificationRequest(
-                device_token=push_token,
-                message=payload,
-                push_type=PushType.LIVE_ACTIVITY
-            )
-
-            result = await self.apns_client.send_notification(request)
-
-            if result.is_successful:
-                logger.info(f"Successfully sent Live Activity update to {push_token}")
-            else:
-                logger.error(f"Failed to send Live Activity update: {result.description}")
-
         except Exception as e:
-            logger.error(f"Error sending Live Activity update: {e}")
+            logger.error(f"Error getting initial activity data: {e}")
+            return {
+                "totalPoints": 0.0,
+                "activePlayersCount": 0,
+                "teamName": "Your Team",
+                "opponentPoints": 0.0,
+                "opponentTeamName": "Opponent",
+                "leagueName": "Fantasy Football",
+                "userAvatarURL": "",
+                "opponentAvatarURL": "",
+                "gameStatus": "Live",
+                "lastUpdate": datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+            }
 
     def start_live_activity(self, device_id: str, user_config: Dict):
         """Start a Live Activity for a user"""
@@ -279,6 +402,74 @@ class LiveActivityManager:
             "last_update": datetime.now()
         }
 
+    async def send_live_activity_start(self, push_token: str, activity_data: Dict):
+        """Send Live Activity start notification"""
+        if not self.apns_client:
+            logger.warning("APNS client not initialized, skipping push notification")
+            return
+
+        try:
+            # Create Live Activity start payload
+            payload = {
+                "aps": {
+                    "timestamp": int(datetime.now().timestamp()),
+                    "event": "start",
+                    "content-state": activity_data
+                }
+            }
+
+            logger.info(f"Sending APNS start notification")
+            request = NotificationRequest(
+                device_token=push_token,
+                message=payload,
+                push_type=PushType.LIVEACTIVITY,
+                priority=10
+            )
+
+            result = await self.apns_client.send_notification(request)
+
+            if result.is_successful:
+                logger.info(f"✅ Successfully sent Live Activity start notification")
+            else:
+                logger.error(f"❌ Failed to send Live Activity start notification: {result.description}")
+
+        except Exception as e:
+            logger.error(f"❌ Error sending Live Activity start notification: {e}")
+
+    async def send_live_activity_end(self, push_token: str):
+        """Send Live Activity end notification"""
+        if not self.apns_client:
+            logger.warning("APNS client not initialized, skipping push notification")
+            return
+
+        try:
+            # Create Live Activity end payload
+            payload = {
+                "aps": {
+                    "timestamp": int(datetime.now().timestamp()),
+                    "event": "end",
+                    "dismissal-date": int(datetime.now().timestamp()),
+                    "content-state": {}
+                }
+            }
+
+            logger.info(f"Sending APNS end notification")
+            request = NotificationRequest(
+                device_token=push_token,
+                message=payload,
+                push_type=PushType.LIVEACTIVITY
+            )
+
+            result = await self.apns_client.send_notification(request)
+
+            if result.is_successful:
+                logger.info(f"✅ Successfully sent Live Activity end notification")
+            else:
+                logger.error(f"❌ Failed to send Live Activity end notification: {result.description}")
+
+        except Exception as e:
+            logger.error(f"❌ Error sending Live Activity end notification: {e}")
+
     def end_live_activity(self, device_id: str):
         """End a Live Activity"""
         logger.info(f"Ending Live Activity for device {device_id}")
@@ -286,6 +477,7 @@ class LiveActivityManager:
             del app_state.active_live_activities[device_id]
             if device_id in app_state.last_scores:
                 del app_state.last_scores[device_id]
+            logger.info(f"✅ Live Activity ended for device {device_id}")
 
 live_activity_manager = LiveActivityManager()
 
@@ -310,6 +502,7 @@ def register_user():
         app_state.push_tokens[config.device_id] = config.push_token
         
         logger.info(f"Registered user {config.user_id} with device {config.device_id}")
+        logger.info(f"PUSH TOEN {config.push_token}")
         return jsonify({"status": "success", "message": "User registered successfully"})
     
     except Exception as e:
@@ -392,14 +585,36 @@ def start_live_activity(device_id):
     """Start Live Activity for a device"""
     if device_id not in app_state.user_configs:
         return jsonify({"error": "Device not registered"}), 404
-    
+
     user_config = app_state.user_configs[device_id]
+
+    # Send APNS start notification
+    push_token = app_state.push_tokens.get(device_id)
+    if push_token:
+        try:
+            # Get initial activity data and send start notification
+            initial_data = run_apns_operation(live_activity_manager.get_initial_activity_data(user_config))
+            run_apns_operation(live_activity_manager.send_live_activity_start(push_token, initial_data))
+            logger.info(f"Sent APNS start notification for device {device_id}")
+        except Exception as e:
+            logger.error(f"Failed to send APNS start notification: {e}")
+
     live_activity_manager.start_live_activity(device_id, user_config)
     return jsonify({"status": "success", "message": "Live Activity started"})
 
 @app.route('/live-activity/end/<device_id>', methods=['POST'])
 def end_live_activity(device_id):
     """End Live Activity for a device"""
+    # Send APNS end notification before removing from tracking
+    push_token = app_state.push_tokens.get(device_id)
+    if push_token:
+        try:
+            # Run the async function to send end notification
+            run_apns_operation(live_activity_manager.send_live_activity_end(push_token))
+            logger.info(f"Sent APNS end notification for device {device_id}")
+        except Exception as e:
+            logger.error(f"Failed to send APNS end notification: {e}")
+
     live_activity_manager.end_live_activity(device_id)
     return jsonify({"status": "success", "message": "Live Activity ended"})
 
@@ -486,6 +701,18 @@ def start_live_activity_by_id(device_id):
         })
 
     user_config = app_state.user_configs[device_id]
+
+    # Send APNS start notification
+    push_token = app_state.push_tokens.get(device_id)
+    if push_token:
+        try:
+            # Get initial activity data and send start notification
+            initial_data = run_apns_operation(live_activity_manager.get_initial_activity_data(user_config))
+            run_apns_operation(live_activity_manager.send_live_activity_start(push_token, initial_data))
+            logger.info(f"Sent APNS start notification for device {device_id}")
+        except Exception as e:
+            logger.error(f"Failed to send APNS start notification: {e}")
+
     live_activity_manager.start_live_activity(device_id, user_config)
 
     return jsonify({
@@ -505,6 +732,16 @@ def stop_live_activity_by_id(device_id):
             "message": f"No active Live Activity for device {device_id}"
         })
 
+    # Send APNS end notification before removing from tracking
+    push_token = app_state.push_tokens.get(device_id)
+    if push_token:
+        try:
+            # Run the async function to send end notification
+            run_apns_operation(live_activity_manager.send_live_activity_end(push_token))
+            logger.info(f"Sent APNS end notification for device {device_id}")
+        except Exception as e:
+            logger.error(f"Failed to send APNS end notification: {e}")
+
     live_activity_manager.end_live_activity(device_id)
 
     return jsonify({
@@ -513,149 +750,142 @@ def stop_live_activity_by_id(device_id):
         "device_id": device_id
     })
 
-def check_and_update_live_activities():
+async def check_and_update_live_activities():
     """Background task to check for scoring updates and push to Live Activities"""
-    logger.info("Checking for Live Activity updates...")
+    logger.info(f"Checking for Live Activity updates... Found {len(app_state.active_live_activities)} active activities")
 
-    async def process_live_activities():
-        for device_id, activity in app_state.active_live_activities.items():
-            try:
-                user_config = activity["user_config"]
+    # Make a copy to avoid "dictionary changed size during iteration"
+    active_activities = dict(app_state.active_live_activities)
 
-                # Get current NFL state
-                nfl_state = sleeper_client.get_nfl_state()
-                current_week = nfl_state.get("week", 1)
+    for device_id, activity in active_activities.items():
+        try:
+            user_config = activity["user_config"]
 
-                # Get user's matchup data
-                matchups = sleeper_client.get_matchups(user_config["league_id"], current_week)
+            # Get current NFL state
+            nfl_state = sleeper_client.get_nfl_state()
+            current_week = nfl_state.get("week", 1)
 
-                # Get rosters to find user's team
-                rosters = sleeper_client.get_league_rosters(user_config["league_id"])
-                user_roster = None
-                opponent_roster = None
+            # Get user's matchup data
+            matchups = sleeper_client.get_matchups(user_config["league_id"], current_week)
 
-                for roster in rosters:
-                    if roster.get("owner_id") == user_config["user_id"]:
-                        user_roster = roster
-                        break
+            # Get rosters to find user's team
+            rosters = sleeper_client.get_league_rosters(user_config["league_id"])
+            user_roster = None
+            opponent_roster = None
 
-                if not user_roster:
-                    continue
+            for roster in rosters:
+                if roster.get("owner_id") == user_config["user_id"]:
+                    user_roster = roster
+                    break
 
-                # Find user's matchup
-                user_matchup = None
-                for matchup in matchups:
-                    if matchup.get("roster_id") == user_roster.get("roster_id"):
-                        user_matchup = matchup
-                        break
+            if not user_roster:
+                continue
 
-                if not user_matchup:
-                    continue
+            # Find user's matchup
+            user_matchup = None
+            for matchup in matchups:
+                if matchup.get("roster_id") == user_roster.get("roster_id"):
+                    user_matchup = matchup
+                    break
 
-                # Find opponent's roster and matchup
-                opponent_points = 0.0
-                opponent_name = "Opponent"
-                user_avatar_url = ""
-                opponent_avatar_url = ""
+            if not user_matchup:
+                continue
 
-                matchup_id = user_matchup.get("matchup_id")
-                for matchup in matchups:
-                    if (matchup.get("matchup_id") == matchup_id and
-                        matchup.get("roster_id") != user_roster.get("roster_id")):
-                        opponent_points = matchup.get("points", 0.0)
+            # Find opponent's roster and matchup
+            opponent_points = 0.0
+            opponent_name = "Opponent"
+            user_avatar_url = ""
+            opponent_avatar_url = ""
 
-                        # Find opponent roster
-                        for roster in rosters:
-                            if roster.get("roster_id") == matchup.get("roster_id"):
-                                opponent_roster = roster
-                                break
-                        break
+            matchup_id = user_matchup.get("matchup_id")
+            for matchup in matchups:
+                if (matchup.get("matchup_id") == matchup_id and
+                    matchup.get("roster_id") != user_roster.get("roster_id")):
+                    opponent_points = matchup.get("points", 0.0)
 
-                # Get user info for both players
-                if user_roster and opponent_roster:
-                    try:
-                        user_info_response = requests.get(f"https://api.sleeper.app/v1/user/{user_config['user_id']}")
-                        if user_info_response.status_code == 200:
-                            user_info = user_info_response.json()
-                            if user_info.get("avatar"):
-                                user_avatar_url = f"https://sleepercdn.com/avatars/thumbs/{user_info['avatar']}"
+                    # Find opponent roster
+                    for roster in rosters:
+                        if roster.get("roster_id") == matchup.get("roster_id"):
+                            opponent_roster = roster
+                            break
+                    break
 
-                        opponent_owner_id = opponent_roster.get("owner_id")
-                        if opponent_owner_id:
-                            opponent_info_response = requests.get(f"https://api.sleeper.app/v1/user/{opponent_owner_id}")
-                            if opponent_info_response.status_code == 200:
-                                opponent_info = opponent_info_response.json()
-                                opponent_name = opponent_info.get("display_name") or opponent_info.get("username", "Opponent")
-                                if opponent_info.get("avatar"):
-                                    opponent_avatar_url = f"https://sleepercdn.com/avatars/thumbs/{opponent_info['avatar']}"
-                    except Exception as e:
-                        logger.error(f"Error fetching user info: {e}")
+            # Get user info for both players
+            if user_roster and opponent_roster:
+                try:
+                    user_info_response = requests.get(f"https://api.sleeper.app/v1/user/{user_config['user_id']}")
+                    if user_info_response.status_code == 200:
+                        user_info = user_info_response.json()
+                        if user_info.get("avatar"):
+                            user_avatar_url = f"https://sleepercdn.com/avatars/thumbs/{user_info['avatar']}"
 
-                # Calculate current data
-                total_points = user_matchup.get("points", 0.0)
-                user_name = f"Team {user_roster.get('roster_id', 'Unknown')}"
+                    opponent_owner_id = opponent_roster.get("owner_id")
+                    if opponent_owner_id:
+                        opponent_info_response = requests.get(f"https://api.sleeper.app/v1/user/{opponent_owner_id}")
+                        if opponent_info_response.status_code == 200:
+                            opponent_info = opponent_info_response.json()
+                            opponent_name = opponent_info.get("display_name") or opponent_info.get("username", "Opponent")
+                            if opponent_info.get("avatar"):
+                                opponent_avatar_url = f"https://sleepercdn.com/avatars/thumbs/{opponent_info['avatar']}"
+                except Exception as e:
+                    logger.error(f"Error fetching user info: {e}")
 
-                # Check if data has changed since last update
-                current_data = {
-                    "total_points": total_points,
-                    "opponent_points": opponent_points,
-                    "user_avatar_url": user_avatar_url,
-                    "opponent_avatar_url": opponent_avatar_url
-                }
+            # Calculate current data
+            total_points = user_matchup.get("points", 0.0)
+            user_name = f"Team {user_roster.get('roster_id', 'Unknown')}"
 
-                last_data = app_state.last_scores.get(device_id, {})
-                has_changed = (
-                    last_data.get("total_points") != total_points or
-                    last_data.get("opponent_points") != opponent_points or
-                    last_data.get("user_avatar_url") != user_avatar_url or
-                    last_data.get("opponent_avatar_url") != opponent_avatar_url
-                )
+            # Check if data has changed since last update
+            current_data = {
+                "total_points": total_points,
+                "opponent_points": opponent_points,
+                "user_avatar_url": user_avatar_url,
+                "opponent_avatar_url": opponent_avatar_url
+            }
 
-                if not has_changed:
-                    logger.info(f"No changes for device {device_id}, skipping update")
-                    continue
+            last_data = app_state.last_scores.get(device_id, {})
+            has_changed = (
+                last_data.get("total_points") != total_points or
+                last_data.get("opponent_points") != opponent_points or
+                last_data.get("user_avatar_url") != user_avatar_url or
+                last_data.get("opponent_avatar_url") != opponent_avatar_url
+            )
 
-                # Download and cache avatars
-                user_avatar_data = None
-                opponent_avatar_data = None
+            if not has_changed:
+                logger.info(f"No changes for device {device_id}, skipping update")
+                continue
 
-                if user_avatar_url:
-                    user_avatar_data = await download_and_cache_avatar(user_avatar_url)
-                if opponent_avatar_url:
-                    opponent_avatar_data = await download_and_cache_avatar(opponent_avatar_url)
+            # Note: Avatar URLs are included in payload, base64 data not needed for Live Activities
 
-                # Create activity data with avatars
-                activity_data = {
-                    "totalPoints": total_points,
-                    "activePlayersCount": len(user_roster.get("starters", [])),
-                    "teamName": user_name,
-                    "opponentPoints": opponent_points,
-                    "opponentTeamName": opponent_name,
-                    "userAvatarURL": user_avatar_url,
-                    "opponentAvatarURL": opponent_avatar_url,
-                    "userAvatarData": user_avatar_data,  # Base64 image data
-                    "opponentAvatarData": opponent_avatar_data,  # Base64 image data
-                    "gameStatus": "Live",
-                    "lastUpdate": datetime.now().isoformat()
-                }
+            # Create activity data matching our working curl test format
+            activity_data = {
+                "totalPoints": total_points,
+                "activePlayersCount": len(user_roster.get("starters", [])),
+                "teamName": user_name,
+                "opponentPoints": opponent_points,
+                "opponentTeamName": opponent_name,
+                "leagueName": "Fantasy Football",
+                "userAvatarURL": user_avatar_url,
+                "opponentAvatarURL": opponent_avatar_url,
+                "gameStatus": "Live",
+                "lastUpdate": datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+            }
 
-                # Send push notification
-                push_token = app_state.push_tokens.get(device_id)
-                if push_token:
-                    await live_activity_manager.send_live_activity_update(push_token, activity_data)
-                    activity["last_update"] = datetime.now()
-                    app_state.last_scores[device_id] = current_data
-                    logger.info(f"Sent Live Activity update for device {device_id}")
+            # Send push notification
+            push_token = app_state.push_tokens.get(device_id)
+            if push_token:
+                await live_activity_manager.send_live_activity_update(push_token, activity_data)
+                activity["last_update"] = datetime.now()
+                app_state.last_scores[device_id] = current_data
+                logger.info(f"Sent Live Activity update for device {device_id}")
 
-            except Exception as e:
-                logger.error(f"Error updating Live Activity for device {device_id}: {e}")
+        except Exception as e:
+            logger.error(f"Error updating Live Activity for device {device_id}: {e}")
 
-    # Run the async function
+def sync_check_and_update_live_activities():
+    """Sync wrapper for async function"""
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(process_live_activities())
-        loop.close()
+        # Use asyncio.run to properly handle the async function
+        asyncio.run(check_and_update_live_activities())
     except Exception as e:
         logger.error(f"Error in background task: {e}")
 
@@ -663,7 +893,7 @@ def startup_tasks():
     """Initialize background tasks"""
     # Schedule Live Activity updates every 2 minutes
     scheduler.add_job(
-        func=check_and_update_live_activities,
+        func=sync_check_and_update_live_activities,
         trigger="interval",
         minutes=2,
         id="live_activity_updates"

@@ -191,13 +191,16 @@ class SleeperViewModel: ObservableObject {
         )
         
         do {
+            print("🎯 Requesting Live Activity with pushType: .token")
+
             let newActivity = try Activity.request(
                 attributes: attributes,
                 content: .init(state: initialState, staleDate: nil),
                 pushType: .token
             )
-            
+
             print("Live Activity started successfully with ID: \(newActivity.id)")
+            print("Activity state: \(newActivity.activityState)")
             self.activity = newActivity
             isLiveActivityActive = true
             errorMessage = nil
@@ -208,10 +211,19 @@ class SleeperViewModel: ObservableObject {
 
             // Start monitoring for updates
             startMonitoringActivityUpdates()
-            
+
         } catch {
-            print("Failed to start Live Activity: \(error)")
-            errorMessage = "Failed to start Live Activity: \(error.localizedDescription)"
+            print("❌ Failed to start Live Activity: \(error)")
+            print("Error type: \(type(of: error))")
+            print("Error description: \(error.localizedDescription)")
+
+            if error.localizedDescription.contains("activityDisabled") {
+                errorMessage = "Live Activities are disabled. Enable them in Settings > Face ID & Passcode > Live Activities."
+            } else if error.localizedDescription.contains("frequentPushesDisabled") {
+                errorMessage = "Frequent push updates are disabled for Live Activities."
+            } else {
+                errorMessage = "Failed to start Live Activity: \(error.localizedDescription)"
+            }
         }
     }
     
@@ -234,7 +246,7 @@ class SleeperViewModel: ObservableObject {
         )
         
         // Update with final state before ending
-        await activity.update(using: finalState)
+        await activity.update(.init(state: finalState, staleDate: nil))
         
         // End the activity
         await activity.end(using: finalState, dismissalPolicy: .immediate)
@@ -612,24 +624,35 @@ class SleeperViewModel: ObservableObject {
     }
     
     private func registerWithBackend() async {
-        guard let activity = activity else { return }
-        
-        // Get the push token for this activity
+        guard let activity = activity else {
+            print("❌ No activity available for registration")
+            return
+        }
+
+        print("🚀 Starting backend registration...")
+
+        // Get the Live Activity specific push token
         let pushToken = await getPushToken(for: activity)
         let deviceID = getDeviceID()
-        
+
+        print("📱 Device ID: \(deviceID)")
+        print("👤 User ID: \(userID)")
+        print("🏆 League ID: \(leagueID)")
+        print("🔑 Push Token: \(pushToken)")
+
         let config = UserConfig(
             userID: userID,
             leagueID: leagueID,
             pushToken: pushToken,
             deviceID: deviceID
         )
-        
+
         do {
             try await apiClient.registerUser(config: config)
-            print("Successfully registered with backend")
+            print("✅ Successfully registered with backend")
         } catch {
-            print("Failed to register with backend: \(error)")
+            print("❌ Failed to register with backend: \(error)")
+            errorMessage = "Backend registration failed: \(error.localizedDescription)"
         }
     }
     
@@ -655,8 +678,15 @@ class SleeperViewModel: ObservableObject {
     }
     
     private func getPushToken(for activity: Activity<SleeperLiveActivityAttributes>) async -> String {
-        // In a real implementation, you would get the actual push token
-        // For now, return a placeholder that includes the activity ID
+        print("🔗 Getting push token for activity: \(activity.id)")
+
+        for await pushToken in activity.pushTokenUpdates {
+            let tokenString = pushToken.map { String(format: "%02x", $0) }.joined()
+            print("✅ Received push token: \(tokenString)")
+            return tokenString
+        }
+
+        print("❌ Failed to get push token, using fallback")
         return "\(activity.id).\(getDeviceID())"
     }
 
@@ -689,9 +719,20 @@ class SleeperViewModel: ObservableObject {
     }
     
     private func getPushToken() async -> String? {
-        // In a real implementation, you would get the actual push token
-        // For now, return a placeholder
-        return "placeholder_push_token_\(getDeviceID())"
+        // Get the actual APNS device token
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.main.async {
+                // Check if we have a stored token from the AppDelegate
+                if let tokenData = UserDefaults.standard.data(forKey: "apns_device_token") {
+                    let tokenString = tokenData.map { String(format: "%02x", $0) }.joined()
+                    print("📱 Retrieved stored APNS token: \(tokenString)")
+                    continuation.resume(returning: tokenString)
+                } else {
+                    print("❌ No APNS device token found")
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
     }
     
     private func notifyBackendLiveActivityStarted() async {
