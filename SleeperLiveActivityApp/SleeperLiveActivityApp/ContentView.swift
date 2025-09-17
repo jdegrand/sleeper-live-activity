@@ -12,6 +12,7 @@ import WidgetKit
 struct ContentView: View {
     @StateObject private var viewModel = SleeperViewModel()
     @State private var showingSettings = false
+    @State private var showingOnboarding = false
     
     var body: some View {
         NavigationView {
@@ -171,10 +172,27 @@ struct ContentView: View {
         .sheet(isPresented: $showingSettings) {
             SettingsView(viewModel: viewModel)
         }
+        .sheet(isPresented: $showingOnboarding) {
+            OnboardingView(isCompleted: $showingOnboarding)
+                .interactiveDismissDisabled(!UserDefaults.standard.bool(forKey: "OnboardingCompleted"))
+                .onDisappear {
+                    // When onboarding sheet disappears and onboarding is completed,
+                    // trigger data loading
+                    if !showingOnboarding && UserDefaults.standard.bool(forKey: "OnboardingCompleted") {
+                        viewModel.onboardingCompleted()
+                    }
+                }
+        }
         .onAppear {
-            // Configuration already loaded in ViewModel init
-            // Refresh live activity status in case it changed while app was in background
-            viewModel.refreshData()
+            // Check if onboarding has been completed
+            let onboardingCompleted = UserDefaults.standard.bool(forKey: "OnboardingCompleted")
+            if !onboardingCompleted {
+                showingOnboarding = true
+            } else {
+                // Configuration already loaded in ViewModel init
+                // Refresh live activity status in case it changed while app was in background
+                viewModel.refreshData()
+            }
         }
         .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
             Button("OK") {

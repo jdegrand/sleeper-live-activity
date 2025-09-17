@@ -42,7 +42,6 @@ class SleeperViewModel: ObservableObject {
     
     init() {
         loadConfiguration()
-        requestNotificationPermissions()
         if #available(iOS 17.2, *) {
             subscribeToPushToStartTokens()
         }
@@ -60,9 +59,13 @@ class SleeperViewModel: ObservableObject {
         // Check if Live Activity is currently running
         checkLiveActivityStatus()
 
-        // Fetch data if configured
-        if isConfigured {
+        // Only fetch data if configured AND onboarding is completed
+        let onboardingCompleted = UserDefaults.standard.bool(forKey: "OnboardingCompleted")
+        if isConfigured && onboardingCompleted {
             Task {
+                // Check permissions before making API calls
+                await waitForPermissions()
+
                 // Resolve username to userID if needed
                 if userID.isEmpty {
                     await resolveUsernameToUserID()
@@ -85,9 +88,16 @@ class SleeperViewModel: ObservableObject {
         // Only resolve username and register device with backend - data fetching handled elsewhere
         if isConfigured {
             Task {
+                // Check permissions before making API calls
+                await waitForPermissions()
+
                 await resolveUsernameToUserID()
                 await registerWithBackend()
                 await downloadLeagueAvatars()
+
+                // Fetch initial data after configuration is saved and permissions are verified
+                await fetchLeagueInfo()
+                await fetchLatestData()
             }
         }
     }
@@ -96,6 +106,44 @@ class SleeperViewModel: ObservableObject {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
             if let error = error {
                 print("Notification permission error: \(error)")
+            }
+        }
+    }
+
+    private func waitForPermissions() async {
+        print("🔐 Checking permissions before making API calls...")
+
+        // Wait for notification permissions
+        await withCheckedContinuation { continuation in
+            UNUserNotificationCenter.current().getNotificationSettings { settings in
+                let granted = settings.authorizationStatus == .authorized
+                print("📱 Notification permission status: \(granted ? "granted" : "denied")")
+                continuation.resume()
+            }
+        }
+
+        // Check Live Activity permissions
+        let authInfo = ActivityAuthorizationInfo()
+        print("🎯 Live Activities enabled: \(authInfo.areActivitiesEnabled)")
+
+        print("✅ Permission check completed, proceeding with API calls")
+    }
+
+    func onboardingCompleted() {
+        // Called when onboarding is completed to start data fetching
+        if isConfigured {
+            Task {
+                await waitForPermissions()
+
+                // Resolve username to userID if needed
+                if userID.isEmpty {
+                    await resolveUsernameToUserID()
+                }
+                await fetchLeagueInfo()
+                await fetchLatestData()
+
+                // Refresh avatars if needed (every 2 hours)
+                refreshAvatarsIfNeeded()
             }
         }
     }
