@@ -41,7 +41,9 @@ cat > /tmp/end_payload.json << EOF
       "opponentUserID": "test_opponent_id",
       "gameStatus": "Final",
       "lastUpdate": 1726358465,
-      "message": "Game completed!"
+      "message": "Game completed!",
+      "userProjectedScore": 118.5,
+      "opponentProjectedScore": 107.2
     }
   }
 }

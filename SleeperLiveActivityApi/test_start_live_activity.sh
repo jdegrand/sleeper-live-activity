@@ -45,7 +45,9 @@ cat > /tmp/start_payload.json << EOF
       "opponentUserID": "test_opponent_id",
       "gameStatus": "Live",
       "lastUpdate": 1726358465,
-      "message": "Game is live!"
+      "message": "Game is live!",
+      "userProjectedScore": 92.8,
+      "opponentProjectedScore": 89.4
     },
     "alert": {
       "title": {

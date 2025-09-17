@@ -22,8 +22,10 @@ public struct SleeperLiveActivityAttributes: ActivityAttributes {
         public var gameStatus: String
         public var lastUpdate: Date
         public var message: String?
+        public var userProjectedScore: Double
+        public var opponentProjectedScore: Double
 
-        public init(totalPoints: Double, activePlayersCount: Int, teamName: String, opponentPoints: Double, opponentTeamName: String, leagueName: String = "Fantasy Football", userID: String, opponentUserID: String, gameStatus: String, lastUpdate: Date, message: String? = nil) {
+        public init(totalPoints: Double, activePlayersCount: Int, teamName: String, opponentPoints: Double, opponentTeamName: String, leagueName: String = "Fantasy Football", userID: String, opponentUserID: String, gameStatus: String, lastUpdate: Date, message: String? = nil, userProjectedScore: Double = 0.0, opponentProjectedScore: Double = 0.0) {
             self.totalPoints = totalPoints
             self.activePlayersCount = activePlayersCount
             self.teamName = teamName
@@ -35,6 +37,8 @@ public struct SleeperLiveActivityAttributes: ActivityAttributes {
             self.gameStatus = gameStatus
             self.lastUpdate = lastUpdate
             self.message = message
+            self.userProjectedScore = userProjectedScore
+            self.opponentProjectedScore = opponentProjectedScore
         }
     }
 

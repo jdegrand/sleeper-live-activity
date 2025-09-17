@@ -47,7 +47,9 @@ cat > /tmp/update_payload.json << EOF
       "opponentUserID": "test_opponent_id",
       "gameStatus": "Live",
       "lastUpdate": 1726358465,
-      "message": "Score updated!"
+      "message": "Score updated!",
+      "userProjectedScore": 98.3,
+      "opponentProjectedScore": 91.7
     }
   }
 }

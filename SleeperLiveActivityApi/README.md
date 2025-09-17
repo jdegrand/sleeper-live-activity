@@ -8,7 +8,9 @@ This API provides real-time push notifications for Sleeper fantasy football Live
 - ✅ Real-time score monitoring from Sleeper API
 - ✅ **Player-level scoring tracking with pts_ppr data**
 - ✅ **GraphQL API integration for player stats and projections**
-- ✅ **Minute-by-minute updates for all active live activities**
+- ✅ **User and opponent projected score tracking**
+- ✅ **Optimized single GraphQL call for all active players**
+- ✅ **30-second update intervals for real-time responsiveness**
 - ✅ **Efficient batch processing for starter players**
 - ✅ Remote avatar URL support
 - ✅ Optional message field for notifications
@@ -60,31 +62,40 @@ The API will run on `http://localhost:8000`
 ### Push Notification Flow
 
 1. **iOS App** starts Live Activity and registers with API
-2. **API** monitors Sleeper data and player scores every minute
-3. **API** detects score changes (team totals and individual player pts_ppr)
+2. **API** monitors Sleeper data and player scores every 30 seconds with optimized batch processing
+3. **API** detects score changes (team totals, player pts_ppr, and projected scores)
 4. **API** sends APNS push notification with:
    - Updated team scores
    - Player-level pts_ppr totals
-   - Projected point totals
+   - **User projected score total**
+   - **Opponent projected score total**
    - Team names and avatars
    - Game status
    - Optional custom messages
 5. **Live Activity** receives push and updates UI immediately
 
-### Player Scoring System
+### Optimized Player Scoring System
 
-1. **Starter Detection**: API fetches user's starting lineup from Sleeper matchups
-2. **Batch Processing**: All starter player stats fetched in single GraphQL request
-3. **Score Calculation**: Sums pts_ppr values for all starters
-4. **Change Detection**: Only updates when pts_ppr scores actually change
-5. **Live Updates**: All active live activities updated concurrently every minute
+1. **Global Player Collection**: API collects all unique player IDs from all active live activities
+2. **Single GraphQL Request**: One consolidated GraphQL call fetches stats for ALL players across ALL users
+3. **Smart Caching**: Player stats cached and distributed to individual users from single source
+4. **Score Calculation**: Calculates both user and opponent projected totals from cached data
+5. **Change Detection**: Only updates when pts_ppr scores or projections actually change
+6. **Live Updates**: All active live activities updated concurrently every 30 seconds
+
+**Performance Benefits:**
+- **90% API reduction**: 10 users = 1 GraphQL call instead of 10
+- **Faster updates**: 30-second intervals (was 60 seconds)
+- **Better scalability**: 100 users still = 1 API call
+- **Opponent tracking**: Automatically calculates opponent projected scores
 
 ### Key Benefits
 
-- **Real-time updates**: Minute-by-minute player score monitoring
+- **Real-time updates**: 30-second player score and projection monitoring
 - **Battery efficient**: App doesn't need to run background tasks
 - **Player-level precision**: Individual player pts_ppr tracking and projections
-- **Efficient batch processing**: Single GraphQL request per user's starters
+- **Optimized efficiency**: Single GraphQL request for ALL players across ALL users
+- **Opponent awareness**: Automatic opponent projected score tracking
 - **Smart change detection**: Only sends updates when scores actually change
 - **Remote avatar support**: Uses Sleeper's avatar URLs directly
 - **Reliable**: Backend monitors continuously even when app is closed
@@ -238,7 +249,9 @@ curl -X POST http://localhost:8000/players/refresh
   "starter_player_ids": ["4892", "8150", "8228", "4039", "1479", "12506", "3198", "8148", "8259"],
   "current_pts_ppr": 87.6,
   "current_projections": 92.3,
-  "total_starters": 9
+  "total_starters": 9,
+  "cache_age_seconds": 15,
+  "data_source": "optimized_cache"
 }
 ```
 
@@ -252,7 +265,8 @@ curl -X POST http://localhost:8000/players/refresh
       "current_pts_ppr": 87.6,
       "current_projections": 92.3,
       "total_starters": 9,
-      "has_live_activity": true
+      "has_live_activity": true,
+      "data_source": "optimized_cache"
     },
     {
       "device_id": "def456",
@@ -260,10 +274,13 @@ curl -X POST http://localhost:8000/players/refresh
       "current_pts_ppr": 64.2,
       "current_projections": 78.1,
       "total_starters": 9,
-      "has_live_activity": false
+      "has_live_activity": false,
+      "data_source": "optimized_cache"
     }
   ],
-  "total_devices": 2
+  "total_devices": 2,
+  "cache_age_seconds": 15,
+  "cache_populated": true
 }
 ```
 
@@ -292,17 +309,19 @@ curl -X POST http://localhost:8000/players/refresh
 - **Production**: Set `use_sandbox=False` in `main.py` (line ~482)
 
 ### Update Frequency
-- **Live Activity Updates**: Every minute (line 1374)
-- **Player Score Updates**: Every minute (line 1392)
-- **Game Start Checker**: Every 5 minutes (line 1383)
-- **NFL Games Refresh**: Daily at 8:00 AM (line 1377)
-- **NFL Players Refresh**: Daily at 8:05 AM (line 1380)
+- **Live Activity Updates**: Every minute (line ~1574)
+- **Optimized Player Score Updates**: Every 30 seconds (line ~1581)
+- **Game Start Checker**: Every 5 minutes (line ~1572)
+- **NFL Games Refresh**: Daily at 8:00 AM (line ~1567)
+- **NFL Players Refresh**: Daily at 8:05 AM (line ~1570)
 
 ### Player Scoring Configuration
-- **GraphQL Endpoint**: Update `self.graphql_url` in `PlayerStatsClient` (line 176)
+- **GraphQL Endpoint**: Update `self.graphql_url` in `PlayerStatsClient` (line ~192)
 - **Season/Week**: Automatically detected from NFL state or defaults to 2025/week 3
-- **Change Threshold**: 0.01 pts_ppr minimum change to trigger updates (line 336)
-- **Concurrent Processing**: All users updated in parallel for efficiency
+- **Change Threshold**: 0.01 pts_ppr minimum change to trigger updates
+- **Optimized Processing**: Single GraphQL call for all active players across all users
+- **Cache Management**: Automatic cache population and refresh on app load
+- **Concurrent Updates**: All live activities updated in parallel from shared cache
 
 ### Avatar Support
 - Uses remote Sleeper avatar URLs directly
@@ -310,11 +329,41 @@ curl -X POST http://localhost:8000/players/refresh
 - Lightweight approach for Live Activity performance
 
 ### Performance Optimizations
-- **Batch GraphQL Requests**: Single request per user's starters
-- **Change Detection**: Only sends updates when scores change
-- **Concurrent Updates**: All live activities updated in parallel
+- **Consolidated GraphQL Requests**: Single request for ALL players across ALL users (90% API reduction)
+- **Smart Caching**: Player stats cached and distributed to individual users
+- **Change Detection**: Only sends updates when scores or projections change
+- **Concurrent Updates**: All live activities updated in parallel from shared cache
 - **Data Caching**: NFL players and games cached daily
 - **Starter ID Caching**: User roster starters cached to reduce API calls
+- **On-Demand Cache Population**: Fresh data fetched automatically on app load
+
+## Live Activity Content State Fields
+
+The Live Activity ContentState now includes projected score fields for enhanced user experience:
+
+```swift
+public struct ContentState: Codable, Hashable {
+    public var totalPoints: Double           // Current user points
+    public var activePlayersCount: Int       // Active players count
+    public var teamName: String              // User team name
+    public var opponentPoints: Double        // Current opponent points
+    public var opponentTeamName: String      // Opponent team name
+    public var leagueName: String            // League name
+    public var userID: String                // User ID
+    public var opponentUserID: String        // Opponent user ID
+    public var gameStatus: String            // Game status
+    public var lastUpdate: Date              // Last update timestamp
+    public var message: String?              // Optional message
+    public var userProjectedScore: Double    // ✨ NEW: User projected total
+    public var opponentProjectedScore: Double // ✨ NEW: Opponent projected total
+}
+```
+
+**New Fields:**
+- `userProjectedScore`: The user's total projected points for all starter players
+- `opponentProjectedScore`: The opponent's total projected points for all starter players
+
+These fields are automatically calculated by the backend and sent via push notifications to update Live Activities in real-time.
 
 ## Troubleshooting
 

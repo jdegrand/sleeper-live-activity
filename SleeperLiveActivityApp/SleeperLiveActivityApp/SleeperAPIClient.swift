@@ -214,6 +214,18 @@ class SleeperAPIClient {
         return jsonObject["avatars"] as? [String: String] ?? [:]
     }
 
+    func getPlayerScores(deviceID: String) async throws -> [String: Any] {
+        let url = URL(string: "\(baseURL)/player-scores/\(deviceID)")!
+        let (data, response) = try await session.data(from: url)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw APIError.fetchFailed
+        }
+
+        return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+    }
+
     func healthCheck() async throws -> [String: Any] {
         let url = URL(string: "\(baseURL)/health")!
         let (data, response) = try await session.data(from: url)

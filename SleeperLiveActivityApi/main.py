@@ -259,6 +259,189 @@ class PlayerStatsClient:
 player_stats_client = PlayerStatsClient()
 
 # -----------------------
+# Optimized Player Stats Manager
+# -----------------------
+class OptimizedPlayerStatsManager:
+    def __init__(self):
+        self.player_stats_cache: Dict[str, Dict] = {}  # player_id -> {pts_ppr, projected_pts, etc}
+        self.last_fetch_time: Optional[datetime] = None
+        self.current_week: int = 3
+        self.current_season: str = "2025"
+
+    def get_all_active_player_ids(self) -> List[str]:
+        """Collect unique player IDs from all active live activities"""
+        all_player_ids = set()
+
+        for device_id in app_state.active_live_activities.keys():
+            starter_ids = app_state.user_starter_player_ids.get(device_id, [])
+            if not starter_ids:
+                # Try to fetch starters if not cached
+                starter_ids = get_user_starter_player_ids(device_id)
+            all_player_ids.update(starter_ids)
+
+        logger.info(f"Collected {len(all_player_ids)} unique players from {len(app_state.active_live_activities)} active live activities")
+        return list(all_player_ids)
+
+    async def update_all_player_stats(self):
+        """Single GraphQL call for ALL active players across ALL live activities"""
+        try:
+            # Get current NFL week
+            nfl_state_data = await asyncio.to_thread(sleeper_client.get_nfl_state)
+            self.current_week = nfl_state_data.get("week", 3) if isinstance(nfl_state_data, dict) else 3
+
+            # Collect all unique player IDs
+            all_player_ids = self.get_all_active_player_ids()
+
+            if not all_player_ids:
+                logger.info("No active players to fetch stats for")
+                return
+
+            logger.info(f"Fetching stats for {len(all_player_ids)} players in single GraphQL request")
+
+            # Single GraphQL call for ALL players
+            stats_data = await asyncio.to_thread(
+                player_stats_client.get_player_scores_and_projections,
+                all_player_ids,
+                self.current_season,
+                self.current_week
+            )
+
+            # Process and cache the results
+            if "data" in stats_data:
+                player_stats = stats_data["data"].get(f"nfl__regular__{self.current_season}__{self.current_week}__stat", [])
+                player_projections = stats_data["data"].get(f"nfl__regular__{self.current_season}__{self.current_week}__proj", [])
+
+                # Build cache: player_id -> stats
+                self.player_stats_cache = {}
+
+                # Process actual stats
+                for player_data in player_stats:
+                    player_id = player_data.get("player_id")
+                    if player_id:
+                        stats = player_data.get("stats", {})
+                        self.player_stats_cache[player_id] = {
+                            "pts_ppr": stats.get("pts_ppr", 0.0),
+                            "stats": stats
+                        }
+
+                # Process projections
+                for player_data in player_projections:
+                    player_id = player_data.get("player_id")
+                    if player_id:
+                        stats = player_data.get("stats", {})
+                        if player_id in self.player_stats_cache:
+                            self.player_stats_cache[player_id]["projected_pts"] = stats.get("pts_ppr", 0.0)
+                        else:
+                            self.player_stats_cache[player_id] = {
+                                "pts_ppr": 0.0,
+                                "projected_pts": stats.get("pts_ppr", 0.0),
+                                "stats": {}
+                            }
+
+                self.last_fetch_time = datetime.now()
+                logger.info(f"Successfully cached stats for {len(self.player_stats_cache)} players")
+
+                # Now update all live activities with the cached data
+                await self.update_all_live_activities_from_cache()
+
+            else:
+                logger.error("Invalid GraphQL response structure")
+
+        except Exception as e:
+            logger.exception(f"Error in optimized player stats update: {e}")
+
+    def get_user_totals(self, device_id: str) -> tuple[float, float]:
+        """Get user's pts_ppr and projection totals from cached data"""
+        starter_ids = app_state.user_starter_player_ids.get(device_id, [])
+        if not starter_ids:
+            starter_ids = get_user_starter_player_ids(device_id)
+
+        total_pts_ppr = 0.0
+        total_projections = 0.0
+
+        for player_id in starter_ids:
+            player_data = self.player_stats_cache.get(player_id, {})
+            total_pts_ppr += float(player_data.get("pts_ppr", 0.0))
+            total_projections += float(player_data.get("projected_pts", 0.0))
+
+        return round(total_pts_ppr, 2), round(total_projections, 2)
+
+    async def update_all_live_activities_from_cache(self):
+        """Update all live activities using cached player data"""
+        logger.info(f"Updating {len(app_state.active_live_activities)} live activities from cached player data")
+
+        update_tasks = []
+        for device_id in list(app_state.active_live_activities.keys()):
+            task = self.update_single_live_activity_from_cache(device_id)
+            update_tasks.append(task)
+
+        # Run all updates concurrently
+        if update_tasks:
+            await asyncio.gather(*update_tasks, return_exceptions=True)
+
+    async def update_single_live_activity_from_cache(self, device_id: str):
+        """Update a single live activity using cached player data"""
+        try:
+            # Get totals from cache
+            current_pts_ppr, current_projections = self.get_user_totals(device_id)
+
+            # Get previous scores
+            previous_pts_ppr = app_state.user_previous_pts_ppr.get(device_id, 0.0)
+            previous_projections = app_state.last_projection_totals.get(device_id, 0.0)
+
+            # Check if scores or projections have changed
+            pts_ppr_changed = abs(current_pts_ppr - previous_pts_ppr) > 0.01
+            projections_changed = abs(current_projections - previous_projections) > 0.01
+
+            if pts_ppr_changed or projections_changed:
+                logger.info(f"Device {device_id}: pts_ppr changed from {previous_pts_ppr} to {current_pts_ppr}, projections from {previous_projections} to {current_projections}")
+
+                # Update stored values
+                app_state.user_previous_pts_ppr[device_id] = current_pts_ppr
+                app_state.last_projection_totals[device_id] = current_projections
+
+                # Update live activity with new scoring data
+                if device_id in app_state.active_live_activities:
+                    activity = app_state.active_live_activities[device_id]
+                    user_config = activity["user_config"]
+
+                    # Get live activity token
+                    live_activity_token = app_state.live_activity_tokens.get(device_id)
+                    if live_activity_token:
+                        # Get comprehensive activity data and add player scoring info
+                        activity_data = await live_activity_manager.get_comprehensive_activity_data(user_config)
+
+                        # Add player scoring information to the activity data
+                        activity_data["playerPtsPpr"] = current_pts_ppr
+                        activity_data["projectedTotal"] = current_projections
+
+                        # Create appropriate message based on what changed
+                        if pts_ppr_changed and current_pts_ppr > 0:
+                            activity_data["message"] = f"Player scores updated: {current_pts_ppr:.1f} pts"
+                        elif projections_changed:
+                            activity_data["message"] = f"Projections updated: {current_projections:.1f} pts projected"
+                        else:
+                            activity_data["message"] = f"Fantasy data updated"
+
+                        # Send update
+                        await live_activity_manager.send_live_activity_update(live_activity_token, activity_data)
+
+                        # Update last update timestamp
+                        activity["last_update"] = datetime.now()
+
+                        logger.info(f"Updated live activity for device {device_id} with new player scores")
+                    else:
+                        logger.warning(f"No live activity token for device {device_id}")
+            else:
+                logger.debug(f"Device {device_id}: No significant change in pts_ppr ({current_pts_ppr}) or projections ({current_projections})")
+
+        except Exception as e:
+            logger.exception(f"Error updating live activity for device {device_id}: {e}")
+
+# Initialize the optimized manager
+optimized_player_manager = OptimizedPlayerStatsManager()
+
+# -----------------------
 # Player scoring helper functions
 # -----------------------
 def get_user_starter_player_ids(device_id: str) -> List[str]:
@@ -345,108 +528,6 @@ def calculate_total_projections(player_proj_data: List[Dict]) -> float:
     logger.info(f"Total projections calculated: {total_projections}")
     return total_projections
 
-async def update_user_player_scores(device_id: str):
-    """Update player scores and projections for a specific user/device"""
-    try:
-        # Get starter player IDs
-        starter_ids = get_user_starter_player_ids(device_id)
-        if not starter_ids:
-            logger.warning(f"No starter IDs found for device {device_id}")
-            return
-
-        # Get current week from NFL state
-        nfl_state_data = await asyncio.to_thread(sleeper_client.get_nfl_state)
-        current_week = nfl_state_data.get("week", 1) if isinstance(nfl_state_data, dict) else 1
-
-        # Fetch player stats and projections
-        logger.info(f"Fetching stats for {len(starter_ids)} players for device {device_id}")
-        stats_data = await asyncio.to_thread(
-            player_stats_client.get_player_scores_and_projections,
-            starter_ids,
-            "2025",
-            current_week
-        )
-
-        if "data" in stats_data:
-            # Extract player stats and projections
-            player_stats = stats_data["data"].get(f"nfl__regular__2025__{current_week}__stat", [])
-            player_projections = stats_data["data"].get(f"nfl__regular__2025__{current_week}__proj", [])
-
-            # Calculate totals
-            current_pts_ppr = calculate_total_pts_ppr(player_stats)
-            current_projections = calculate_total_projections(player_projections)
-
-            logger.info(f"Device {device_id}: Current pts_ppr={current_pts_ppr}, Projections={current_projections}")
-
-            # Get previous scores
-            previous_pts_ppr = app_state.user_previous_pts_ppr.get(device_id, 0.0)
-            previous_projections = app_state.last_projection_totals.get(device_id, 0.0)
-
-            # Check if scores or projections have changed
-            pts_ppr_changed = abs(current_pts_ppr - previous_pts_ppr) > 0.01  # Small tolerance for floating point
-            projections_changed = abs(current_projections - previous_projections) > 0.01
-
-            if pts_ppr_changed or projections_changed:
-                logger.info(f"Device {device_id}: pts_ppr changed from {previous_pts_ppr} to {current_pts_ppr}, projections from {previous_projections} to {current_projections}")
-
-                # Update stored values
-                app_state.user_previous_pts_ppr[device_id] = current_pts_ppr
-                app_state.last_projection_totals[device_id] = current_projections
-
-                # Update live activity with new scoring data
-                if device_id in app_state.active_live_activities:
-                    activity = app_state.active_live_activities[device_id]
-                    user_config = activity["user_config"]
-
-                    # Get live activity token
-                    live_activity_token = app_state.live_activity_tokens.get(device_id)
-                    if live_activity_token:
-                        # Get comprehensive activity data and add player scoring info
-                        activity_data = await live_activity_manager.get_comprehensive_activity_data(user_config)
-
-                        # Add player scoring information to the activity data
-                        activity_data["playerPtsPpr"] = current_pts_ppr
-                        activity_data["projectedTotal"] = current_projections
-
-                        # Create appropriate message based on what changed
-                        if pts_ppr_changed and current_pts_ppr > 0:
-                            activity_data["message"] = f"Player scores updated: {current_pts_ppr:.1f} pts"
-                        elif projections_changed:
-                            activity_data["message"] = f"Projections updated: {current_projections:.1f} pts projected"
-                        else:
-                            activity_data["message"] = f"Fantasy data updated"
-
-                        # Send update
-                        await live_activity_manager.send_live_activity_update(live_activity_token, activity_data)
-
-                        # Update last update timestamp
-                        activity["last_update"] = datetime.now()
-
-                        logger.info(f"Updated live activity for device {device_id} with new player scores")
-                    else:
-                        logger.warning(f"No live activity token for device {device_id}")
-            else:
-                logger.debug(f"Device {device_id}: No significant change in pts_ppr ({current_pts_ppr})")
-
-        else:
-            logger.error(f"Invalid stats data structure for device {device_id}")
-
-    except Exception as e:
-        logger.exception(f"Error updating player scores for device {device_id}: {e}")
-
-async def update_all_live_activity_player_scores():
-    """Update player scores for all active live activities"""
-    logger.info(f"Updating player scores for {len(app_state.active_live_activities)} active live activities")
-
-    # Process all active live activities
-    update_tasks = []
-    for device_id in list(app_state.active_live_activities.keys()):
-        task = update_user_player_scores(device_id)
-        update_tasks.append(task)
-
-    # Run all updates concurrently for efficiency
-    if update_tasks:
-        await asyncio.gather(*update_tasks, return_exceptions=True)
 
 # -----------------------
 # ESPN API client for game schedules
@@ -867,7 +948,9 @@ class LiveActivityManager:
                     "opponentUserID": "",
                     "gameStatus": "Live",
                     "lastUpdate": int(datetime.now().timestamp()),
-                    "message": ""
+                    "message": "",
+                    "userProjectedScore": 0.0,
+                    "opponentProjectedScore": 0.0
                 }
 
             # find matchup for this roster
@@ -889,7 +972,9 @@ class LiveActivityManager:
                     "opponentUserID": "",
                     "gameStatus": "Live",
                     "lastUpdate": int(datetime.now().timestamp()),
-                    "message": ""
+                    "message": "",
+                    "userProjectedScore": 0.0,
+                    "opponentProjectedScore": 0.0
                 }
 
             opponent_points = 0.0
@@ -929,6 +1014,33 @@ class LiveActivityManager:
             total_points = user_matchup.get("points", 0.0)
             user_name = f"Team {user_roster.get('roster_id', 'Unknown')}"
 
+            # Get projected scores for user and opponent
+            user_projected_score = 0.0
+            opponent_projected_score = 0.0
+
+            # Get user projected score from optimized manager
+            try:
+                _, user_projected_score = optimized_player_manager.get_user_totals(user_config.get("device_id", ""))
+            except Exception as e:
+                logger.error(f"Error getting user projected score: {e}")
+
+            # Get opponent projected score if we have opponent roster
+            if opponent_roster and opponent_user_id:
+                try:
+                    # Find opponent's device_id from user_configs
+                    opponent_device_id = None
+                    for device_id, config in app_state.user_configs.items():
+                        if config.get("user_id") == opponent_user_id:
+                            opponent_device_id = device_id
+                            break
+
+                    if opponent_device_id:
+                        _, opponent_projected_score = optimized_player_manager.get_user_totals(opponent_device_id)
+                    else:
+                        logger.info(f"No device found for opponent {opponent_user_id}")
+                except Exception as e:
+                    logger.error(f"Error getting opponent projected score: {e}")
+
             activity_data = {
                 "totalPoints": total_points,
                 "activePlayersCount": len(user_roster.get("starters", [])),
@@ -940,7 +1052,9 @@ class LiveActivityManager:
                 "opponentUserID": opponent_user_id,
                 "gameStatus": "Live",
                 "lastUpdate": int(datetime.now().timestamp()),
-                "message": ""
+                "message": "",
+                "userProjectedScore": user_projected_score,
+                "opponentProjectedScore": opponent_projected_score
             }
             return activity_data
         except Exception as e:
@@ -956,7 +1070,9 @@ class LiveActivityManager:
                 "opponentUserID": "",
                 "gameStatus": "Live",
                 "lastUpdate": int(datetime.now().timestamp()),
-                "message": ""
+                "message": "",
+                "userProjectedScore": 0.0,
+                "opponentProjectedScore": 0.0
             }
 
     async def send_live_activity_start(self, push_token: str, user_config: Dict, game_message: str = ""):
@@ -1490,14 +1606,14 @@ def startup_tasks():
     # Schedule game start checker every 5 minutes
     scheduler.add_job(func=check_and_start_live_activities, trigger="interval", minutes=5, id="game_start_checker")
 
-    # Schedule player score updates every minute
-    def schedule_player_score_updates():
+    # Schedule optimized player score updates every 30 seconds
+    def schedule_optimized_player_score_updates():
         try:
-            submit_to_apns_loop(update_all_live_activity_player_scores())
+            submit_to_apns_loop(optimized_player_manager.update_all_player_stats())
         except Exception:
-            logger.exception("Failed to run scheduled player score updates")
+            logger.exception("Failed to run optimized player score updates")
 
-    scheduler.add_job(func=schedule_player_score_updates, trigger="interval", minutes=1, id="player_score_updates", next_run_time=datetime.now())
+    scheduler.add_job(func=schedule_optimized_player_score_updates, trigger="interval", seconds=30, id="optimized_player_score_updates", next_run_time=datetime.now())
 
     # Load players data on startup (from file if exists, otherwise fetch from API)
     load_players_on_startup()
@@ -1546,26 +1662,80 @@ def get_player_scores(device_id):
     if device_id not in app_state.user_configs:
         return jsonify({"error": "Device not found"}), 404
 
+    # Check if we have fresh cached data
+    cache_age_seconds = 0
+    if optimized_player_manager.last_fetch_time:
+        cache_age_seconds = (datetime.now() - optimized_player_manager.last_fetch_time).total_seconds()
+
+    # If cache is empty or old (>60 seconds), fetch fresh data
+    if not optimized_player_manager.player_stats_cache or cache_age_seconds > 60:
+        try:
+            logger.info(f"Cache empty or stale ({cache_age_seconds}s old), fetching fresh data for {device_id}")
+            # Trigger immediate cache update
+            submit_to_apns_loop(optimized_player_manager.update_all_player_stats())
+            # Small delay to allow cache population
+            import time
+            time.sleep(1)
+        except Exception as e:
+            logger.error(f"Failed to update cache on-demand: {e}")
+
+    # Get data from optimized manager (will use cache if available)
+    try:
+        current_pts_ppr, current_projections = optimized_player_manager.get_user_totals(device_id)
+    except Exception as e:
+        logger.error(f"Error getting user totals from optimized manager: {e}")
+        # Fallback to app_state values
+        current_pts_ppr = app_state.user_previous_pts_ppr.get(device_id, 0.0)
+        current_projections = app_state.last_projection_totals.get(device_id, 0.0)
+
     starter_ids = app_state.user_starter_player_ids.get(device_id, [])
-    current_pts_ppr = app_state.user_previous_pts_ppr.get(device_id, 0.0)
-    current_projections = app_state.last_projection_totals.get(device_id, 0.0)
+    if not starter_ids:
+        starter_ids = get_user_starter_player_ids(device_id)
 
     return jsonify({
         "device_id": device_id,
         "starter_player_ids": starter_ids,
         "current_pts_ppr": current_pts_ppr,
         "current_projections": current_projections,
-        "total_starters": len(starter_ids)
+        "total_starters": len(starter_ids),
+        "cache_age_seconds": cache_age_seconds,
+        "data_source": "optimized_cache" if optimized_player_manager.player_stats_cache else "fallback"
     })
 
 @app.route("/player-scores", methods=["GET"])
 def get_all_player_scores():
     """Get player scoring data for all devices"""
+    # Check cache freshness
+    cache_age_seconds = 0
+    if optimized_player_manager.last_fetch_time:
+        cache_age_seconds = (datetime.now() - optimized_player_manager.last_fetch_time).total_seconds()
+
+    # Trigger cache update if needed
+    if not optimized_player_manager.player_stats_cache or cache_age_seconds > 60:
+        try:
+            logger.info(f"Cache empty or stale ({cache_age_seconds}s old), fetching fresh data for all devices")
+            submit_to_apns_loop(optimized_player_manager.update_all_player_stats())
+            import time
+            time.sleep(1)
+        except Exception as e:
+            logger.error(f"Failed to update cache on-demand: {e}")
+
     scores_data = []
     for device_id in app_state.user_configs.keys():
+        # Try to get from optimized manager first
+        try:
+            current_pts_ppr, current_projections = optimized_player_manager.get_user_totals(device_id)
+            data_source = "optimized_cache"
+        except Exception as e:
+            logger.error(f"Error getting user totals for {device_id}: {e}")
+            # Fallback to app_state
+            current_pts_ppr = app_state.user_previous_pts_ppr.get(device_id, 0.0)
+            current_projections = app_state.last_projection_totals.get(device_id, 0.0)
+            data_source = "fallback"
+
         starter_ids = app_state.user_starter_player_ids.get(device_id, [])
-        current_pts_ppr = app_state.user_previous_pts_ppr.get(device_id, 0.0)
-        current_projections = app_state.last_projection_totals.get(device_id, 0.0)
+        if not starter_ids:
+            starter_ids = get_user_starter_player_ids(device_id)
 
         scores_data.append({
             "device_id": device_id,
@@ -1573,12 +1743,15 @@ def get_all_player_scores():
             "current_pts_ppr": current_pts_ppr,
             "current_projections": current_projections,
             "total_starters": len(starter_ids),
-            "has_live_activity": device_id in app_state.active_live_activities
+            "has_live_activity": device_id in app_state.active_live_activities,
+            "data_source": data_source
         })
 
     return jsonify({
         "player_scores": scores_data,
-        "total_devices": len(scores_data)
+        "total_devices": len(scores_data),
+        "cache_age_seconds": cache_age_seconds,
+        "cache_populated": bool(optimized_player_manager.player_stats_cache)
     })
 
 @app.route("/player-scores/refresh/<device_id>", methods=["POST"])
@@ -1588,8 +1761,8 @@ def refresh_player_scores(device_id):
         return jsonify({"error": "Device not found"}), 404
 
     try:
-        # Submit the update task to the APNS loop
-        submit_to_apns_loop(update_user_player_scores(device_id))
+        # Submit the update task to the APNS loop using optimized manager
+        submit_to_apns_loop(optimized_player_manager.update_single_live_activity_from_cache(device_id))
         return jsonify({
             "status": "success",
             "message": f"Player scores refresh initiated for device {device_id}"
@@ -1601,11 +1774,11 @@ def refresh_player_scores(device_id):
 def refresh_all_player_scores():
     """Manually refresh player scores for all devices"""
     try:
-        # Submit the update task to the APNS loop
-        submit_to_apns_loop(update_all_live_activity_player_scores())
+        # Submit the update task to the APNS loop using optimized manager
+        submit_to_apns_loop(optimized_player_manager.update_all_player_stats())
         return jsonify({
             "status": "success",
-            "message": "Player scores refresh initiated for all active live activities"
+            "message": "Optimized player scores refresh initiated for all active live activities"
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500

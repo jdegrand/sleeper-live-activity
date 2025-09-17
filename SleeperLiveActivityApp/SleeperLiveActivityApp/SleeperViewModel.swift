@@ -214,7 +214,9 @@ class SleeperViewModel: ObservableObject {
             userID: userID,
             opponentUserID: opponentUserID,
             gameStatus: gameStatus,
-            lastUpdate: Date()
+            lastUpdate: Date(),
+            userProjectedScore: 0.0,
+            opponentProjectedScore: 0.0
         )
         
         do {
@@ -267,7 +269,9 @@ class SleeperViewModel: ObservableObject {
             opponentUserID: opponentUserID,
             gameStatus: "Final",
             lastUpdate: Date(),
-            message: "Game ended"
+            message: "Game ended",
+            userProjectedScore: 0.0,
+            opponentProjectedScore: 0.0
         )
         
         // Update with final state before ending
@@ -397,7 +401,9 @@ class SleeperViewModel: ObservableObject {
                 userID: userID,
                 opponentUserID: opponentUserID,
                 gameStatus: newGameStatus,
-                lastUpdate: now
+                lastUpdate: now,
+                userProjectedScore: 0.0,
+                opponentProjectedScore: 0.0
             )
 
             do {
