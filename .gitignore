@@ -117,3 +117,5 @@ logs/
 uploads/
 downloads/
 cache/
+
+players.json

@@ -50,6 +50,10 @@ class AppState:
         self.live_activity_tokens: Dict[str, str] = {}  # device_id -> live activity token
         self.avatar_cache: Dict[str, str] = {}  # URL -> base64 data
         self.last_scores: Dict[str, Dict] = {}  # device_id -> last score data
+        self.nfl_games: List[Dict] = []  # today's NFL games from ESPN
+        self.games_last_fetched: Optional[datetime] = None
+        self.nfl_players: Dict = {}  # NFL players data from Sleeper API
+        self.players_last_fetched: Optional[datetime] = None
 
 app_state = AppState()
 scheduler = BackgroundScheduler()
@@ -157,6 +161,251 @@ class SleeperAPIClient:
             raise
 
 sleeper_client = SleeperAPIClient()
+
+# -----------------------
+# ESPN API client for game schedules
+# -----------------------
+def fetch_nfl_games_from_espn() -> List[Dict]:
+    """Fetch today's NFL games from ESPN API, returning only the fields specified in read.txt."""
+    try:
+        espn_url = "https://site.web.api.espn.com/apis/personalized/v2/scoreboard/header?sport=football&league=nfl&region=us&lang=en&contentorigin=espn"
+        response = requests.get(espn_url, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+
+        games = []
+        sports = data.get("sports", [])
+        for sport in sports:
+            leagues = sport.get("leagues", [])
+            for league in leagues:
+                events = league.get("events", [])
+                for event in events:
+                    # Only include the exact fields from read.txt
+                    event_data = {
+                        "date": event.get("date", ""),
+                        "name": event.get("name", ""),
+                        "competitors": []
+                    }
+
+                    # Only include abbreviation from competitors
+                    competitors = event.get("competitors", [])
+                    for competitor in competitors:
+                        competitor_data = {
+                            "abbreviation": competitor.get("abbreviation", "")
+                        }
+                        event_data["competitors"].append(competitor_data)
+
+                    games.append(event_data)
+
+        logger.info(f"Fetched {len(games)} NFL games from ESPN")
+        return games
+    except Exception as e:
+        logger.error(f"Failed to fetch NFL games from ESPN: {e}")
+        return []
+
+def update_nfl_games():
+    """Update the stored NFL games data."""
+    try:
+        games = fetch_nfl_games_from_espn()
+        app_state.nfl_games = games
+        app_state.games_last_fetched = datetime.now()
+        logger.info(f"Updated NFL games data: {len(games)} games stored")
+    except Exception as e:
+        logger.error(f"Failed to update NFL games: {e}")
+
+def fetch_nfl_players_from_sleeper() -> Dict:
+    """Fetch NFL players data from Sleeper API, filtering to only include specified fields."""
+    try:
+        players_url = "https://api.sleeper.app/v1/players/nfl"
+        logger.info("Fetching NFL players data from Sleeper API (this may take a while due to 5MB size)")
+        response = requests.get(players_url, timeout=60)  # Longer timeout for large file
+        response.raise_for_status()
+        raw_players_data = response.json()
+
+        # Filter to only include the fields specified in read.txt
+        filtered_players = {}
+        for player_id, player_data in raw_players_data.items():
+            filtered_players[player_id] = {
+                "full_name": player_data.get("full_name"),
+                "last_name": player_data.get("last_name"),
+                "number": player_data.get("number"),
+                "team": player_data.get("team"),
+                "position": player_data.get("position"),
+                "first_name": player_data.get("first_name")
+            }
+
+        logger.info(f"Successfully fetched and filtered NFL players data with {len(filtered_players)} players")
+        return filtered_players
+    except Exception as e:
+        logger.error(f"Failed to fetch NFL players from Sleeper API: {e}")
+        return {}
+
+def save_players_to_file(players_data: Dict):
+    """Save players data to players.json file."""
+    try:
+        with open("players.json", "w") as f:
+            json.dump(players_data, f, indent=2)
+        logger.info("Successfully saved players data to players.json")
+    except Exception as e:
+        logger.error(f"Failed to save players data to file: {e}")
+
+def load_players_from_file() -> Dict:
+    """Load players data from players.json file."""
+    try:
+        with open("players.json", "r") as f:
+            players_data = json.load(f)
+        logger.info(f"Successfully loaded players data from file with {len(players_data)} players")
+        return players_data
+    except FileNotFoundError:
+        logger.info("players.json file not found")
+        return {}
+    except Exception as e:
+        logger.error(f"Failed to load players data from file: {e}")
+        return {}
+
+def update_nfl_players():
+    """Update the stored NFL players data."""
+    try:
+        players_data = fetch_nfl_players_from_sleeper()
+        if players_data:
+            app_state.nfl_players = players_data
+            app_state.players_last_fetched = datetime.now()
+
+            # Save to file for persistence
+            save_players_to_file(players_data)
+
+            logger.info(f"Updated NFL players data: {len(players_data)} players stored")
+    except Exception as e:
+        logger.error(f"Failed to update NFL players: {e}")
+
+def load_players_on_startup():
+    """Load players data on startup - from file if exists, otherwise fetch from API."""
+    try:
+        # Check if players.json file exists
+        if os.path.exists("players.json"):
+            logger.info("players.json file found, loading from file")
+            players_data = load_players_from_file()
+            if players_data:
+                app_state.nfl_players = players_data
+                # Set a placeholder timestamp since we loaded from file
+                app_state.players_last_fetched = datetime.now()
+                logger.info("Successfully loaded players data from file on startup")
+                return
+
+        # File doesn't exist or failed to load, fetch from API
+        logger.info("players.json file not found, fetching from Sleeper API")
+        update_nfl_players()
+
+    except Exception as e:
+        logger.error(f"Failed to load players on startup: {e}")
+
+def check_and_start_live_activities():
+    """Check if any games are starting now and auto-start live activities."""
+    try:
+        current_time = datetime.now()
+        logger.info(f"Checking for games starting at {current_time}")
+
+        # First, find all games starting soon
+        games_starting_soon = []
+        for game in app_state.nfl_games:
+            try:
+                # Parse game date
+                game_date_str = game.get("date", "")
+                if not game_date_str:
+                    continue
+
+                game_date = datetime.fromisoformat(game_date_str.replace('Z', '+00:00'))
+
+                # Check if game is starting within the next 5 minutes
+                time_diff = (game_date - current_time.replace(tzinfo=game_date.tzinfo)).total_seconds()
+
+                if 0 <= time_diff <= 300:  # Game starting in next 5 minutes
+                    games_starting_soon.append(game.get('name', 'Unknown Game'))
+
+            except Exception as e:
+                logger.error(f"Error processing game {game}: {e}")
+
+        # If we have games starting soon, start or update live activities with the message
+        if games_starting_soon:
+            game_names_message = ", ".join(games_starting_soon)
+            logger.info(f"Games starting soon: {game_names_message}")
+
+            # Handle all configured users
+            for device_id, user_config in app_state.user_configs.items():
+                if device_id not in app_state.active_live_activities:
+                    # Start new live activity
+                    logger.info(f"Auto-starting live activity for device {device_id}")
+                    try:
+                        start_live_activity_for_device(device_id, game_names_message)
+                    except Exception as e:
+                        logger.error(f"Failed to auto-start live activity for {device_id}: {e}")
+                else:
+                    # Update existing live activity with new game message
+                    logger.info(f"Updating existing live activity for device {device_id} with new games")
+                    try:
+                        update_live_activity_with_message(device_id, game_names_message)
+                    except Exception as e:
+                        logger.error(f"Failed to update live activity for {device_id}: {e}")
+
+    except Exception as e:
+        logger.error(f"Error in check_and_start_live_activities: {e}")
+
+def start_live_activity_for_device(device_id: str, game_message: str = ""):
+    """Start live activity for a specific device (internal function)."""
+    if device_id not in app_state.user_configs:
+        logger.warning(f"Device {device_id} not registered, skipping auto-start")
+        return
+
+    user_config = app_state.user_configs[device_id]
+    push_to_start_token = app_state.push_to_start_tokens.get(device_id)
+
+    if push_to_start_token:
+        try:
+            # submit start coroutine to apns_loop using push-to-start token
+            submit_to_apns_loop(live_activity_manager.send_live_activity_start(push_to_start_token, user_config, game_message))
+            logger.info(f"Sent APNS start notification for device {device_id} (auto-start)")
+        except Exception:
+            logger.exception("Failed to send APNS start notification for auto-start")
+    else:
+        logger.warning(f"No push-to-start token available for device {device_id}")
+
+    app_state.active_live_activities[device_id] = {
+        "user_config": user_config,
+        "started_at": datetime.now(),
+        "last_update": datetime.now()
+    }
+    logger.info(f"Auto-started live activity for device {device_id}")
+
+def update_live_activity_with_message(device_id: str, game_message: str):
+    """Update existing live activity with new game message."""
+    if device_id not in app_state.active_live_activities:
+        logger.warning(f"No active live activity found for device {device_id}")
+        return
+
+    # Get live activity token for this device
+    live_activity_token = app_state.live_activity_tokens.get(device_id)
+    if not live_activity_token:
+        logger.warning(f"No live activity token available for device {device_id}")
+        return
+
+    try:
+        # Get user config and current activity data
+        activity = app_state.active_live_activities[device_id]
+        user_config = activity["user_config"]
+
+        # Submit update coroutine to apns_loop with the new message
+        submit_to_apns_loop(live_activity_manager.send_live_activity_update_with_message(
+            live_activity_token,
+            user_config,
+            game_message
+        ))
+
+        # Update the last_update timestamp
+        activity["last_update"] = datetime.now()
+
+        logger.info(f"Sent live activity update with new games message for device {device_id}")
+    except Exception as e:
+        logger.error(f"Failed to update live activity message for {device_id}: {e}")
 
 # -----------------------
 # Utility: download avatar but offload to thread
@@ -281,6 +530,26 @@ class LiveActivityManager:
                     await asyncio.sleep(2 ** attempt)
                 else:
                     logger.error("Max retries reached for send_live_activity_update")
+
+    async def send_live_activity_update_with_message(self, push_token: str, user_config: Dict, game_message: str):
+        """Send Live Activity update with custom message via APNS."""
+        if not self.apns_client:
+            logger.warning("APNS client not initialized - skipping send_live_activity_update_with_message")
+            return
+
+        try:
+            # Get current activity data
+            activity_data = await self.get_comprehensive_activity_data(user_config)
+
+            # Override the message with the new game message
+            activity_data["message"] = game_message
+
+            # Send the update
+            await self.send_live_activity_update(push_token, activity_data)
+            logger.info(f"Sent live activity update with game message: {game_message}")
+
+        except Exception as e:
+            logger.exception(f"Error sending live activity update with message: {e}")
 
     async def get_comprehensive_activity_data(self, user_config: Dict) -> Dict:
         """Gather and return the activity data. Uses blocking HTTP so offloads to threads when needed."""
@@ -408,7 +677,7 @@ class LiveActivityManager:
                 "message": ""
             }
 
-    async def send_live_activity_start(self, push_token: str, user_config: Dict):
+    async def send_live_activity_start(self, push_token: str, user_config: Dict, game_message: str = ""):
         """Send Live Activity start notification (must run on apns_loop)."""
         if not self.apns_client:
             logger.warning("APNS client not initialized, skipping send_live_activity_start")
@@ -416,6 +685,10 @@ class LiveActivityManager:
 
         try:
             activity_data = await self.get_comprehensive_activity_data(user_config)
+
+            # Add the game message to the activity data
+            if game_message:
+                activity_data["message"] = game_message
 
             payload = {
                 "aps": {
@@ -669,9 +942,8 @@ def get_matchups(league_id, week):
 @app.route("/players/nfl", methods=["GET"])
 def get_nfl_players():
     try:
-        if not app_state.player_cache:
-            app_state.player_cache = sleeper_client.get_nfl_players()
-        return jsonify(app_state.player_cache)
+        # Use our cached players data instead of calling the API each time
+        return jsonify(app_state.nfl_players)
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
@@ -872,8 +1144,52 @@ def startup_tasks():
 
     # Use APScheduler to call our submit function every minute
     scheduler.add_job(func=schedule_job_submit, trigger="interval", minutes=1, id="live_activity_updates", next_run_time=datetime.now())
+
+    # Schedule daily NFL games fetch at 8 AM
+    scheduler.add_job(func=update_nfl_games, trigger="cron", hour=8, minute=0, id="daily_games_fetch")
+
+    # Schedule daily NFL players fetch at 8 AM
+    scheduler.add_job(func=update_nfl_players, trigger="cron", hour=8, minute=5, id="daily_players_fetch")
+
+    # Schedule game start checker every 5 minutes
+    scheduler.add_job(func=check_and_start_live_activities, trigger="interval", minutes=5, id="game_start_checker")
+
+    # Load players data on startup (from file if exists, otherwise fetch from API)
+    load_players_on_startup()
+
+    # Fetch games immediately on startup
+    update_nfl_games()
+
     scheduler.start()
-    logger.info("Startup tasks complete. Scheduler started.")
+    logger.info("Startup tasks complete. Scheduler started with game monitoring.")
+
+@app.route("/games", methods=["GET"])
+def get_nfl_games():
+    return jsonify({
+        "games": app_state.nfl_games,
+        "last_fetched": app_state.games_last_fetched.isoformat() if app_state.games_last_fetched else None,
+        "total_games": len(app_state.nfl_games)
+    })
+
+@app.route("/games/refresh", methods=["POST"])
+def refresh_nfl_games():
+    update_nfl_games()
+    return jsonify({
+        "status": "success",
+        "message": "Games data refreshed",
+        "games": app_state.nfl_games,
+        "total_games": len(app_state.nfl_games)
+    })
+
+@app.route("/players/refresh", methods=["POST"])
+def refresh_nfl_players():
+    update_nfl_players()
+    return jsonify({
+        "status": "success",
+        "message": "Players data refreshed",
+        "total_players": len(app_state.nfl_players),
+        "last_fetched": app_state.players_last_fetched.isoformat() if app_state.players_last_fetched else None
+    })
 
 @app.route("/health", methods=["GET"])
 def health_check():
