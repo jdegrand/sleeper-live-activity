@@ -155,8 +155,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             opponentPoints: contentState["opponentPoints"] as? Double ?? 0.0,
             opponentTeamName: contentState["opponentTeamName"] as? String ?? "Opponent",
             leagueName: contentState["leagueName"] as? String ?? "League",
-            userAvatarURL: contentState["userAvatarURL"] as? String ?? "",
-            opponentAvatarURL: contentState["opponentAvatarURL"] as? String ?? "",
+            userID: contentState["userID"] as? String ?? "",
+            opponentUserID: contentState["opponentUserID"] as? String ?? "",
             gameStatus: contentState["gameStatus"] as? String ?? "Live",
             lastUpdate: Date(),
             message: contentState["message"] as? String

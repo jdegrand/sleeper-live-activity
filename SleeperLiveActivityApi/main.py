@@ -6,6 +6,7 @@ import base64
 import logging
 import threading
 import requests
+import time
 from PIL import Image
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
@@ -49,6 +50,7 @@ class AppState:
         self.push_to_start_tokens: Dict[str, str] = {}  # device_id -> push-to-start token
         self.live_activity_tokens: Dict[str, str] = {}  # device_id -> live activity token
         self.avatar_cache: Dict[str, str] = {}  # URL -> base64 data
+        self.league_avatar_cache: Dict[str, Tuple[float, Dict[str, str]]] = {}  # league_id -> (timestamp, {user_id: avatar_url})
         self.last_scores: Dict[str, Dict] = {}  # device_id -> last score data
         self.nfl_games: List[Dict] = []  # today's NFL games from ESPN
         self.games_last_fetched: Optional[datetime] = None
@@ -135,6 +137,15 @@ class SleeperAPIClient:
             return response.json()
         except Exception as e:
             logger.error(f"Error fetching league rosters: {e}")
+            raise
+
+    def get_league_users(self, league_id: str) -> List[Dict]:
+        try:
+            response = self.session.get(f"{self.BASE_URL}/league/{league_id}/users", timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Error fetching league users: {e}")
             raise
 
     def get_matchups(self, league_id: str, week: int) -> List[Dict]:
@@ -852,8 +863,8 @@ class LiveActivityManager:
                     "opponentPoints": 0.0,
                     "opponentTeamName": "Opponent",
                     "leagueName": "Fantasy Football",
-                    "userAvatarURL": "",
-                    "opponentAvatarURL": "",
+                    "userID": user_config["user_id"],
+                    "opponentUserID": "",
                     "gameStatus": "Live",
                     "lastUpdate": int(datetime.now().timestamp()),
                     "message": ""
@@ -874,8 +885,8 @@ class LiveActivityManager:
                     "opponentPoints": 0.0,
                     "opponentTeamName": "Opponent",
                     "leagueName": "Fantasy Football",
-                    "userAvatarURL": "",
-                    "opponentAvatarURL": "",
+                    "userID": user_config["user_id"],
+                    "opponentUserID": "",
                     "gameStatus": "Live",
                     "lastUpdate": int(datetime.now().timestamp()),
                     "message": ""
@@ -883,8 +894,7 @@ class LiveActivityManager:
 
             opponent_points = 0.0
             opponent_name = "Opponent"
-            user_avatar_url = ""
-            opponent_avatar_url = ""
+            opponent_user_id = ""
 
             matchup_id = user_matchup.get("matchup_id")
             for m in matchups:
@@ -908,16 +918,13 @@ class LiveActivityManager:
                     return {}
 
             user_info = await asyncio.to_thread(fetch_user_info, user_config["user_id"])
-            if user_info.get("avatar"):
-                user_avatar_url = f"https://sleepercdn.com/avatars/thumbs/{user_info['avatar']}"
 
             if opponent_roster:
                 opponent_owner_id = opponent_roster.get("owner_id")
                 if opponent_owner_id:
+                    opponent_user_id = opponent_owner_id
                     opponent_info = await asyncio.to_thread(fetch_user_info, opponent_owner_id)
                     opponent_name = opponent_info.get("display_name") or opponent_info.get("username", opponent_name)
-                    if opponent_info.get("avatar"):
-                        opponent_avatar_url = f"https://sleepercdn.com/avatars/thumbs/{opponent_info['avatar']}"
 
             total_points = user_matchup.get("points", 0.0)
             user_name = f"Team {user_roster.get('roster_id', 'Unknown')}"
@@ -929,8 +936,8 @@ class LiveActivityManager:
                 "opponentPoints": opponent_points,
                 "opponentTeamName": opponent_name,
                 "leagueName": "Fantasy Football",
-                "userAvatarURL": user_avatar_url,
-                "opponentAvatarURL": opponent_avatar_url,
+                "userID": user_config["user_id"],
+                "opponentUserID": opponent_user_id,
                 "gameStatus": "Live",
                 "lastUpdate": int(datetime.now().timestamp()),
                 "message": ""
@@ -945,8 +952,8 @@ class LiveActivityManager:
                 "opponentPoints": 0.0,
                 "opponentTeamName": "Opponent",
                 "leagueName": "Fantasy Football",
-                "userAvatarURL": "",
-                "opponentAvatarURL": "",
+                "userID": "",
+                "opponentUserID": "",
                 "gameStatus": "Live",
                 "lastUpdate": int(datetime.now().timestamp()),
                 "message": ""
@@ -1018,8 +1025,8 @@ class LiveActivityManager:
                     "opponentPoints": 102.3,
                     "opponentTeamName": "Opponent",
                     "leagueName": "Fantasy Football",
-                    "userAvatarURL": "",
-                    "opponentAvatarURL": "",
+                    "userID": "",
+                    "opponentUserID": "",
                     "gameStatus": "Final",
                     "lastUpdate": int(datetime.now().timestamp()),
                     "message": "Game completed!"
@@ -1069,16 +1076,16 @@ async def check_and_update_live_activities():
             current_data = {
                 "total_points": activity_data["totalPoints"],
                 "opponent_points": activity_data["opponentPoints"],
-                "user_avatar_url": activity_data.get("userAvatarURL", ""),
-                "opponent_avatar_url": activity_data.get("opponentAvatarURL", "")
+                "user_id": activity_data.get("userID", ""),
+                "opponent_user_id": activity_data.get("opponentUserID", "")
             }
 
             last_data = app_state.last_scores.get(device_id, {})
             has_changed = (
                 last_data.get("total_points") != current_data["total_points"] or
                 last_data.get("opponent_points") != current_data["opponent_points"] or
-                last_data.get("user_avatar_url") != current_data["user_avatar_url"] or
-                last_data.get("opponent_avatar_url") != current_data["opponent_avatar_url"]
+                last_data.get("user_id") != current_data["user_id"] or
+                last_data.get("opponent_user_id") != current_data["opponent_user_id"]
             )
 
             if not has_changed:
@@ -1228,6 +1235,60 @@ def get_nfl_state():
         app_state.nfl_state_cache = sleeper_client.get_nfl_state()
         return jsonify(app_state.nfl_state_cache)
     except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@app.route("/league/<league_id>/avatars", methods=["GET"])
+def get_league_avatars(league_id):
+    """
+    Get avatar URLs for all users in a league
+    Returns: {"avatars": {"user_id": "avatar_url", ...}}
+    """
+    try:
+        # Check cache first (30 minute cache)
+        cached_avatars = app_state.league_avatar_cache.get(league_id)
+
+        if cached_avatars:
+            cache_time, avatars = cached_avatars
+            # Cache for 30 minutes
+            if time.time() - cache_time < 30 * 60:
+                logger.debug(f"Returning cached avatars for league {league_id}")
+                return jsonify({"avatars": avatars})
+
+        # Get league users directly from Sleeper API
+        users = sleeper_client.get_league_users(league_id)
+        avatars = {}
+
+        for user in users:
+            user_id = user.get("user_id")
+            if not user_id:
+                continue
+
+            avatar_url = None
+
+            # Priority 1: Check metadata.avatar (full URL)
+            metadata = user.get("metadata", {})
+            if metadata and "avatar" in metadata:
+                avatar_url = metadata["avatar"]
+                logger.debug(f"Using metadata avatar for user {user_id}: {avatar_url}")
+
+            # Priority 2: Use top-level avatar (needs thumb URL construction)
+            elif "avatar" in user and user["avatar"]:
+                avatar_hash = user["avatar"]
+                avatar_url = f"https://sleepercdn.com/avatars/{avatar_hash}"
+                logger.debug(f"Using top-level avatar for user {user_id}: {avatar_url}")
+
+            if avatar_url:
+                avatars[user_id] = avatar_url
+            else:
+                logger.debug(f"No avatar found for user {user_id}")
+
+        # Cache the result
+        app_state.league_avatar_cache[league_id] = (time.time(), avatars)
+
+        logger.info(f"Found avatars for {len(avatars)} users in league {league_id}")
+        return jsonify({"avatars": avatars})
+    except Exception as e:
+        logger.exception(f"Failed to get avatars for league {league_id}")
         return jsonify({"error": str(e)}), 400
 
 @app.route("/live-activity/start/<device_id>", methods=["POST"])

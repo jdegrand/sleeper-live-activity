@@ -41,8 +41,8 @@ cat > /tmp/start_payload.json << EOF
       "opponentPoints": 78.2,
       "opponentTeamName": "Dorungus",
       "leagueName": "Rungy",
-      "userAvatarURL": "",
-      "opponentAvatarURL": "",
+      "userID": "test_user_id",
+      "opponentUserID": "test_opponent_id",
       "gameStatus": "Live",
       "lastUpdate": 1726358465,
       "message": "Game is live!"

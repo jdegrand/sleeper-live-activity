@@ -9,28 +9,54 @@
 import SwiftUI
 
 public struct SharedAvatarView: View {
-    let avatarURL: String
+    let userID: String
     let placeholderColor: Color
     let size: CGFloat
+    let useMinimized: Bool
 
-    public init(avatarURL: String, placeholderColor: Color, size: CGFloat) {
-        self.avatarURL = avatarURL
+    public init(userID: String, placeholderColor: Color, size: CGFloat, useMinimized: Bool = false) {
+        self.userID = userID
         self.placeholderColor = placeholderColor
         self.size = size
+        self.useMinimized = useMinimized || size <= 30 // Auto-use minimized for small sizes
     }
 
     public var body: some View {
         ZStack {
-            // For now, use placeholder since we're only using remote URLs
-            // In the future, this could be enhanced to load from avatarURL
-            Circle()
-                .fill(placeholderColor.opacity(0.3))
-                .frame(width: size, height: size)
-                .overlay(
-                    Image(systemName: "person.fill")
-                        .foregroundColor(placeholderColor)
-                        .font(.system(size: size * 0.4))
-                )
+            if let localImageURL = getLocalImageURL(),
+               let imageData = try? Data(contentsOf: localImageURL),
+               let uiImage = UIImage(data: imageData) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: size, height: size)
+                    .clipShape(Circle())
+            } else {
+                Circle()
+                    .fill(placeholderColor.opacity(0.3))
+                    .frame(width: size, height: size)
+                    .overlay(
+                        Image(systemName: "person.fill")
+                            .foregroundColor(placeholderColor)
+                            .font(.system(size: size * 0.4))
+                    )
+            }
         }
+    }
+
+    private func getLocalImageURL() -> URL? {
+        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.jdegrand.SleeperLiveActivityApp") else {
+            return nil
+        }
+
+        // Use minimized version if requested, otherwise use regular version
+        let filename = useMinimized ? "\(userID)_mini.jpg" : "\(userID).jpg"
+        let fileURL = containerURL.appendingPathComponent(filename)
+
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            return fileURL
+        }
+
+        return nil
     }
 }

@@ -200,6 +200,19 @@ class SleeperAPIClient {
 
         print("✅ Live Activity token registered successfully")
     }
+
+    func getLeagueAvatars(leagueID: String) async throws -> [String: String] {
+        let url = URL(string: "\(baseURL)/league/\(leagueID)/avatars")!
+        let (data, response) = try await session.data(from: url)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw APIError.fetchFailed
+        }
+
+        let jsonObject = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+        return jsonObject["avatars"] as? [String: String] ?? [:]
+    }
 }
 
 enum APIError: Error, LocalizedError {

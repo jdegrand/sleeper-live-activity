@@ -45,7 +45,7 @@ public struct SleeperWidgetView: View {
                 // User team (left side)
                 HStack(spacing: 8) {
                     SharedAvatarView(
-                        avatarURL: state.userAvatarURL,
+                        userID: state.userID,
                         placeholderColor: .blue,
                         size: 32
                     )
@@ -78,7 +78,7 @@ public struct SleeperWidgetView: View {
                     }
 
                     SharedAvatarView(
-                        avatarURL: state.opponentAvatarURL,
+                        userID: state.opponentUserID,
                         placeholderColor: .red,
                         size: 32
                     )

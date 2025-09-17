@@ -37,8 +37,8 @@ cat > /tmp/end_payload.json << EOF
       "opponentPoints": 102.3,
       "opponentTeamName": "Dorungus",
       "leagueName": "Football League",
-      "userAvatarURL": "",
-      "opponentAvatarURL": "",
+      "userID": "test_user_id",
+      "opponentUserID": "test_opponent_id",
       "gameStatus": "Final",
       "lastUpdate": 1726358465,
       "message": "Game completed!"

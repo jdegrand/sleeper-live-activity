@@ -25,8 +25,9 @@ extension SleeperLiveActivityAttributes.ContentState {
             teamName: "Team 1",
             opponentPoints: 72.80,
             opponentTeamName: "Team 2",
-            userAvatarURL: "https://sleepercdn.com/avatars/thumbs/cc12ec49965eb7856f84d71cf85306af",
-            opponentAvatarURL: "https://sleepercdn.com/avatars/thumbs/446042a71cea6b2353e5a7ad7d2a259d",
+            leagueName: "Fantasy Football",
+            userID: "cc12ec49965eb7856f84d71cf85306af",
+            opponentUserID: "446042a71cea6b2353e5a7ad7d2a259d",
             gameStatus: "Live",
             lastUpdate: Date(),
             message: "Game is live!"
@@ -40,8 +41,9 @@ extension SleeperLiveActivityAttributes.ContentState {
              teamName: "Team 1",
              opponentPoints: 108.60,
              opponentTeamName: "Team 2",
-             userAvatarURL: "https://sleepercdn.com/avatars/thumbs/cc12ec49965eb7856f84d71cf85306af",
-             opponentAvatarURL: "https://sleepercdn.com/avatars/thumbs/446042a71cea6b2353e5a7ad7d2a259d",
+             leagueName: "Fantasy Football",
+             userID: "cc12ec49965eb7856f84d71cf85306af",
+             opponentUserID: "446042a71cea6b2353e5a7ad7d2a259d",
              gameStatus: "Final",
              lastUpdate: Date(),
              message: "Game completed!"
@@ -63,7 +65,7 @@ struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.leading) {
                     VStack(spacing: 6) {
                         SharedAvatarView(
-                            avatarURL: context.state.userAvatarURL,
+                            userID: context.state.userID,
                             placeholderColor: .blue,
                             size: 60
                         )
@@ -80,7 +82,7 @@ struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.trailing) {
                     VStack(spacing: 6) {
                         SharedAvatarView(
-                            avatarURL: context.state.opponentAvatarURL,
+                            userID: context.state.opponentUserID,
                             placeholderColor: .red,
                             size: 60
                         )
@@ -110,7 +112,7 @@ struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
             } compactLeading: {
                 HStack {
                     SharedAvatarView(
-                        avatarURL: context.state.userAvatarURL,
+                        userID: context.state.userID,
                         placeholderColor: .blue,
                         size: 24
                     )
@@ -124,14 +126,14 @@ struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
                         .font(.caption)
                         .fontWeight(.semibold)
                     SharedAvatarView(
-                        avatarURL: context.state.opponentAvatarURL,
+                        userID: context.state.opponentUserID,
                         placeholderColor: .red,
                         size: 24
                     )
                 }
             } minimal: {
                 SharedAvatarView(
-                    avatarURL: context.state.userAvatarURL,
+                    userID: context.state.userID,
                     placeholderColor: .blue,
                     size: 24
                 )

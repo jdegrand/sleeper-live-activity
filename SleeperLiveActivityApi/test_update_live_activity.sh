@@ -43,8 +43,8 @@ cat > /tmp/update_payload.json << EOF
       "opponentPoints": 87.5,
       "opponentTeamName": "Dorungus",
       "leagueName": "Rungy",
-      "userAvatarURL": "",
-      "opponentAvatarURL": "",
+      "userID": "test_user_id",
+      "opponentUserID": "test_opponent_id",
       "gameStatus": "Live",
       "lastUpdate": 1726358465,
       "message": "Score updated!"

@@ -52,8 +52,8 @@ struct ContentView: View {
                                         opponentPoints: viewModel.opponentPoints,
                                         opponentTeamName: viewModel.opponentTeamName,
                                         leagueName: viewModel.leagueName,
-                                        userAvatarURL: viewModel.userAvatarURL,
-                                        opponentAvatarURL: viewModel.opponentAvatarURL,
+                                        userID: viewModel.userID,
+                                        opponentUserID: viewModel.opponentUserID,
                                         gameStatus: viewModel.gameStatus,
                                         lastUpdate: viewModel.lastUpdate
                                     ),

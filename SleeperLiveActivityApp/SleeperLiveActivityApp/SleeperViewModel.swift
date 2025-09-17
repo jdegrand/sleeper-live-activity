@@ -10,7 +10,7 @@ import Combine
 import ActivityKit
 import WidgetKit
 import UserNotifications
-import Combine
+import UIKit
 
 class SleeperViewModel: ObservableObject {
     @Published var username: String = ""
@@ -24,8 +24,7 @@ class SleeperViewModel: ObservableObject {
     @Published var teamName: String = "Your Team"
     @Published var opponentTeamName: String = "Opponent"
     @Published var leagueName: String = "Fantasy Football"
-    @Published var userAvatarURL: String = ""
-    @Published var opponentAvatarURL: String = ""
+    @Published var opponentUserID: String = ""
 
     @Published var gameStatus: String = "Starting..."
     @Published var lastUpdate: Date = Date()
@@ -70,6 +69,9 @@ class SleeperViewModel: ObservableObject {
                 }
                 await fetchLeagueInfo()
                 await fetchLatestData()
+
+                // Refresh avatars if needed (every 2 hours)
+                refreshAvatarsIfNeeded()
             }
         }
     }
@@ -85,6 +87,7 @@ class SleeperViewModel: ObservableObject {
             Task {
                 await resolveUsernameToUserID()
                 await registerWithBackend()
+                await downloadLeagueAvatars()
             }
         }
     }
@@ -159,8 +162,8 @@ class SleeperViewModel: ObservableObject {
             opponentPoints: opponentPoints,
             opponentTeamName: opponentTeamName,
             leagueName: leagueName,
-            userAvatarURL: userAvatarURL,
-            opponentAvatarURL: opponentAvatarURL,
+            userID: userID,
+            opponentUserID: opponentUserID,
             gameStatus: gameStatus,
             lastUpdate: Date()
         )
@@ -211,8 +214,8 @@ class SleeperViewModel: ObservableObject {
             opponentPoints: opponentPoints,
             opponentTeamName: opponentTeamName,
             leagueName: leagueName,
-            userAvatarURL: userAvatarURL,
-            opponentAvatarURL: opponentAvatarURL,
+            userID: userID,
+            opponentUserID: opponentUserID,
             gameStatus: "Final",
             lastUpdate: Date(),
             message: "Game ended"
@@ -332,8 +335,8 @@ class SleeperViewModel: ObservableObject {
 
         // Update Live Activity if active
         if let activity = activity {
-            print("🎯 Updating Live Activity with avatars:")
-            print("   Remote URLs - User: \(userAvatarURL), Opponent: \(opponentAvatarURL)")
+            print("🎯 Updating Live Activity with user IDs:")
+            print("   User ID: \(userID), Opponent ID: \(opponentUserID)")
 
             let newState = SleeperLiveActivityAttributes.ContentState(
                 totalPoints: newPoints,
@@ -342,8 +345,8 @@ class SleeperViewModel: ObservableObject {
                 opponentPoints: newOpponentPoints,
                 opponentTeamName: opponentName,
                 leagueName: leagueName,
-                userAvatarURL: userAvatarURL,
-                opponentAvatarURL: opponentAvatarURL,
+                userID: userID,
+                opponentUserID: opponentUserID,
                 gameStatus: newGameStatus,
                 lastUpdate: now
             )
@@ -390,38 +393,16 @@ class SleeperViewModel: ObservableObject {
                 if let opponentRoster = rosters.first(where: { $0["roster_id"] as? Int == opponentRosterID }),
                    let opponentOwnerID = opponentRoster["owner_id"] as? String {
 
-                    // Get user info for avatars and display names
+                    // Get user info for display names
                     async let userInfo = try? apiClient.getUser(userID: userOwnerID)
                     async let opponentInfo = try? apiClient.getUser(userID: opponentOwnerID)
 
                     let userResult = await userInfo
                     let opponentResult = await opponentInfo
 
-                    // Update avatar URLs
-                    if let userAvatarUrl = userResult?["avatar"] as? String {
-                        await MainActor.run {
-                            self.userAvatarURL = userAvatarUrl
-                        }
-
-                        // Download to cache for main app usage
-                        await ImageCacheManager.shared.downloadAndCacheImageAsLocalURL(from: userAvatarUrl)
-                    } else {
-                        await MainActor.run {
-                            self.userAvatarURL = ""
-                        }
-                    }
-
-                    if let opponentAvatarUrl = opponentResult?["avatar"] as? String {
-                        await MainActor.run {
-                            self.opponentAvatarURL = opponentAvatarUrl
-                        }
-
-                        // Download to cache for main app usage
-                        await ImageCacheManager.shared.downloadAndCacheImageAsLocalURL(from: opponentAvatarURL)
-                    } else {
-                        await MainActor.run {
-                            self.opponentAvatarURL = ""
-                        }
+                    // Store opponent user ID
+                    await MainActor.run {
+                        self.opponentUserID = opponentOwnerID
                     }
 
                     // Get display names or use usernames
@@ -701,6 +682,112 @@ class SleeperViewModel: ObservableObject {
             print("✅ Successfully sent push-to-start token to server")
         } catch {
             print("❌ Failed to send push-to-start token: \(error)")
+        }
+    }
+
+    // MARK: - Avatar Management
+    private let lastAvatarDownloadKey = "LastAvatarDownload"
+
+    private func downloadLeagueAvatars() async {
+        guard isConfigured else {
+            print("❌ downloadLeagueAvatars: Not configured")
+            return
+        }
+
+        print("🖼️ Downloading league avatars for league: \(leagueID)")
+
+        do {
+            // Get all avatar URLs for the league
+            let avatars = try await apiClient.getLeagueAvatars(leagueID: leagueID)
+            print("📊 Found \(avatars.count) avatars to download")
+
+            // Download each avatar to local storage
+            for (userID, avatarURL) in avatars {
+                await downloadAndCacheAvatar(userID: userID, avatarURL: avatarURL)
+            }
+
+            // Update last download time
+            UserDefaults.standard.set(Date(), forKey: lastAvatarDownloadKey)
+            print("✅ Completed downloading league avatars")
+
+            // Trigger UI refresh on main thread
+            DispatchQueue.main.async {
+                self.objectWillChange.send()
+            }
+
+        } catch {
+            print("❌ Failed to download league avatars: \(error)")
+        }
+    }
+
+    private func downloadAndCacheAvatar(userID: String, avatarURL: String) async {
+        // Download image and save to shared container
+        do {
+            guard let url = URL(string: avatarURL) else {
+                print("❌ Invalid avatar URL for user \(userID): \(avatarURL)")
+                return
+            }
+
+            let (data, _) = try await URLSession.shared.data(from: url)
+
+            // Save to shared container with user ID as filename
+            if let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.jdegrand.SleeperLiveActivityApp") {
+                let fileURL = containerURL.appendingPathComponent("\(userID).jpg")
+                try data.write(to: fileURL)
+                print("✅ Downloaded avatar for user \(userID): \(fileURL.path)")
+
+                // Create minimized version for Dynamic Island
+                await createMinimizedAvatar(data: data, userID: userID, containerURL: containerURL)
+            } else {
+                print("❌ Failed to access shared container for user \(userID)")
+            }
+        } catch {
+            print("❌ Failed to download avatar for user \(userID): \(error)")
+        }
+    }
+
+    private func createMinimizedAvatar(data: Data, userID: String, containerURL: URL) async {
+        do {
+            guard let originalImage = UIImage(data: data) else {
+                print("❌ Failed to create UIImage from data for user \(userID)")
+                return
+            }
+
+            // Create a smaller version (24x24 for Dynamic Island)
+            let targetSize = CGSize(width: 24, height: 24)
+            let renderer = UIGraphicsImageRenderer(size: targetSize)
+
+            let minimizedImage = renderer.image { _ in
+                originalImage.draw(in: CGRect(origin: .zero, size: targetSize))
+            }
+
+            if let minimizedData = minimizedImage.jpegData(compressionQuality: 0.8) {
+                let minimizedURL = containerURL.appendingPathComponent("\(userID)_mini.jpg")
+                try minimizedData.write(to: minimizedURL)
+                print("✅ Created minimized avatar for user \(userID): \(minimizedURL.path)")
+            }
+        } catch {
+            print("❌ Failed to create minimized avatar for user \(userID): \(error)")
+        }
+    }
+
+    private func shouldRefreshAvatars() -> Bool {
+        guard let lastDownload = UserDefaults.standard.object(forKey: lastAvatarDownloadKey) as? Date else {
+            return true // Never downloaded before
+        }
+
+        let twoHoursAgo = Date().addingTimeInterval(-2 * 60 * 60) // 2 hours ago
+        return lastDownload < twoHoursAgo
+    }
+
+    func refreshAvatarsIfNeeded() {
+        guard isConfigured && shouldRefreshAvatars() else {
+            return
+        }
+
+        print("🔄 Refreshing avatars (last update > 2 hours ago)")
+        Task {
+            await downloadLeagueAvatars()
         }
     }
 }

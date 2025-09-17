@@ -1,0 +1,33 @@
+Inside your ActivityView or ContentState views:
+
+struct SleeperLiveActivityView: View {
+    let context: ActivityViewContext<SleeperLiveActivityAttributes>
+
+    var body: some View {
+        HStack {
+            // Local asset
+            Image("team_logo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 40, height: 40)
+                .clipShape(Circle())
+
+            // Remote image
+            AsyncImage(url: URL(string: "https://example.com/avatar.png")) { image in
+                image.resizable()
+            } placeholder: {
+                ProgressView()
+            }
+            .frame(width: 40, height: 40)
+            .clipShape(Circle())
+
+            Text(context.state.teamName)
+        }
+    }
+}
+
+🚨 Important Notes
+	•	Remote images must be HTTPS (no insecure http://).
+	•	If using AsyncImage, make sure your widget extension has App Transport Security (ATS) configured for your domains.
+	•	Keep image loading fast — if it takes too long, the Live Activity may show a placeholder instead.
+	•	Test across Lock Screen, Dynamic Island, and StandBy Mode — layouts differ.

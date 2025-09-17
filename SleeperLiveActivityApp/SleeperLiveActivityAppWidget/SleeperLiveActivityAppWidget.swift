@@ -19,8 +19,9 @@ struct Provider: TimelineProvider {
                 teamName: "My Team",
                 opponentPoints: 0,
                 opponentTeamName: "Opponent",
-                userAvatarURL: "",
-                opponentAvatarURL: "",
+                leagueName: "Fantasy Football",
+                userID: "test_user_1",
+                opponentUserID: "test_user_2",
                 gameStatus: "Pregame",
                 lastUpdate: Date()
             )
@@ -115,8 +116,9 @@ struct SleeperLiveActivityAppWidget: Widget {
             teamName: "Team Swift",
             opponentPoints: 92.3,
             opponentTeamName: "Team Kotlin",
-            userAvatarURL: "",
-            opponentAvatarURL: "",
+            leagueName: "Fantasy Football",
+            userID: "test_user_1",
+            opponentUserID: "test_user_2",
             gameStatus: "Q3 8:24",
             lastUpdate: Date()
         )
