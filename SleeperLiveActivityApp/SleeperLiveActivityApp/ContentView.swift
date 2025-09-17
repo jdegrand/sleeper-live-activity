@@ -45,21 +45,25 @@ struct ContentView: View {
                                 Text("Live Activity Preview")
                                     .font(.headline)
 
-                                SleeperWidgetView(
-                                    state: SleeperLiveActivityAttributes.ContentState(
-                                        totalPoints: viewModel.currentPoints,
-                                        activePlayersCount: viewModel.activePlayers,
-                                        teamName: viewModel.teamName,
-                                        opponentPoints: viewModel.opponentPoints,
-                                        opponentTeamName: viewModel.opponentTeamName,
-                                        leagueName: viewModel.leagueName,
-                                        userID: viewModel.userID,
-                                        opponentUserID: viewModel.opponentUserID,
-                                        gameStatus: viewModel.gameStatus,
-                                        lastUpdate: viewModel.lastUpdate
-                                    ),
-                                    leagueName: viewModel.leagueName
-                                )
+                                if viewModel.isDataLoaded {
+                                    SleeperWidgetView(
+                                        state: SleeperLiveActivityAttributes.ContentState(
+                                            totalPoints: viewModel.currentPoints,
+                                            activePlayersCount: viewModel.activePlayers,
+                                            teamName: viewModel.teamName,
+                                            opponentPoints: viewModel.opponentPoints,
+                                            opponentTeamName: viewModel.opponentTeamName,
+                                            leagueName: viewModel.leagueName,
+                                            userID: viewModel.userID,
+                                            opponentUserID: viewModel.opponentUserID,
+                                            gameStatus: viewModel.gameStatus,
+                                            lastUpdate: viewModel.lastUpdate
+                                        ),
+                                        leagueName: viewModel.leagueName
+                                    )
+                                } else {
+                                    SkeletonView()
+                                }
                             }
                             
                             // Live Activity Status

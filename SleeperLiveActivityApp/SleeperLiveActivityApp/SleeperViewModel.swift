@@ -29,6 +29,7 @@ class SleeperViewModel: ObservableObject {
     @Published var gameStatus: String = "Starting..."
     @Published var lastUpdate: Date = Date()
     @Published var errorMessage: String?
+    @Published var isDataLoaded: Bool = false
     
     private let apiClient = SleeperAPIClient()
     private var cancellables = Set<AnyCancellable>()
@@ -448,9 +449,10 @@ class SleeperViewModel: ObservableObject {
                     let userResult = await userInfo
                     let opponentResult = await opponentInfo
 
-                    // Store opponent user ID
+                    // Store opponent user ID and mark data as loaded
                     await MainActor.run {
                         self.opponentUserID = opponentOwnerID
+                        self.isDataLoaded = true
                     }
 
                     // Get display names or use usernames

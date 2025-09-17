@@ -45,6 +45,11 @@ public struct SharedAvatarView: View {
     }
 
     private func getLocalImageURL() -> URL? {
+        // Don't try to load avatar if userID is empty
+        guard !userID.isEmpty else {
+            return nil
+        }
+
         guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.jdegrand.SleeperLiveActivityApp") else {
             return nil
         }
