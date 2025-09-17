@@ -1,14 +1,19 @@
 # Sleeper Live Activity API
 
-This API provides real-time push notifications for Sleeper fantasy football Live Activities.
+This API provides real-time push notifications for Sleeper fantasy football Live Activities with comprehensive player scoring tracking.
 
 ## Features
 
 - ✅ APNS push notifications for Live Activity updates
 - ✅ Real-time score monitoring from Sleeper API
-- ✅ Efficient updates (only sends when data changes)
+- ✅ **Player-level scoring tracking with pts_ppr data**
+- ✅ **GraphQL API integration for player stats and projections**
+- ✅ **Minute-by-minute updates for all active live activities**
+- ✅ **Efficient batch processing for starter players**
 - ✅ Remote avatar URL support
 - ✅ Optional message field for notifications
+- ✅ Automatic game detection and live activity management
+- ✅ NFL games and players data caching
 
 ## Setup
 
@@ -55,20 +60,32 @@ The API will run on `http://localhost:8000`
 ### Push Notification Flow
 
 1. **iOS App** starts Live Activity and registers with API
-2. **API** monitors Sleeper data every 2 minutes
-3. **API** detects score changes
+2. **API** monitors Sleeper data and player scores every minute
+3. **API** detects score changes (team totals and individual player pts_ppr)
 4. **API** sends APNS push notification with:
-   - Updated scores
-   - Team names
-   - Avatar URLs (for Sleeper profile images)
+   - Updated team scores
+   - Player-level pts_ppr totals
+   - Projected point totals
+   - Team names and avatars
    - Game status
-   - Optional custom message
+   - Optional custom messages
 5. **Live Activity** receives push and updates UI immediately
+
+### Player Scoring System
+
+1. **Starter Detection**: API fetches user's starting lineup from Sleeper matchups
+2. **Batch Processing**: All starter player stats fetched in single GraphQL request
+3. **Score Calculation**: Sums pts_ppr values for all starters
+4. **Change Detection**: Only updates when pts_ppr scores actually change
+5. **Live Updates**: All active live activities updated concurrently every minute
 
 ### Key Benefits
 
-- **Real-time updates**: No 30-second polling delays
+- **Real-time updates**: Minute-by-minute player score monitoring
 - **Battery efficient**: App doesn't need to run background tasks
+- **Player-level precision**: Individual player pts_ppr tracking and projections
+- **Efficient batch processing**: Single GraphQL request per user's starters
+- **Smart change detection**: Only sends updates when scores actually change
 - **Remote avatar support**: Uses Sleeper's avatar URLs directly
 - **Reliable**: Backend monitors continuously even when app is closed
 - **Flexible messaging**: Optional message field for custom notifications
@@ -77,6 +94,7 @@ The API will run on `http://localhost:8000`
 
 ### Device Management
 - `POST /register` - Register device for Live Activity updates
+- `POST /register-live-activity-token` - Register Live Activity token for push updates
 - `GET /devices` - List all registered devices and their status
 - `GET /devices/{device_id}` - Get detailed information about a specific device
 
@@ -87,6 +105,17 @@ The API will run on `http://localhost:8000`
 - `POST /live-activity/stop-by-id/{device_id}` - Stop Live Activity by device ID (new)
 - `GET /live-activity/status/{device_id}` - Check if monitoring is active
 
+### **Player Scoring (New)**
+- `GET /player-scores` - Get player scoring data for all devices
+- `GET /player-scores/{device_id}` - Get player scoring data for a specific device
+- `POST /player-scores/refresh` - Manually refresh player scores for all devices
+- `POST /player-scores/refresh/{device_id}` - Manually refresh player scores for a specific device
+
+### NFL Data Management
+- `GET /games` - Get today's NFL games data from ESPN
+- `POST /games/refresh` - Manually refresh NFL games data
+- `POST /players/refresh` - Manually refresh NFL players data from Sleeper
+
 ### Sleeper API Proxies
 - `GET /state/nfl` - Get current NFL state
 - `GET /user/{username}` - Get user info by username
@@ -94,7 +123,7 @@ The API will run on `http://localhost:8000`
 - `GET /league/{league_id}` - Get league information
 - `GET /league/{league_id}/rosters` - Get league rosters
 - `GET /league/{league_id}/matchups/{week}` - Get matchups for specific week
-- `GET /players/nfl` - Get all NFL players
+- `GET /players/nfl` - Get all NFL players (cached)
 
 ### System
 - `GET /health` - Health check
@@ -116,7 +145,17 @@ curl -X POST http://localhost:8000/register \
     "user_id": "your_sleeper_user_id",
     "league_id": "your_league_id",
     "push_token": "device_push_token",
-    "device_id": "unique_device_identifier"
+    "device_id": "unique_device_identifier",
+    "push_to_start_token": "push_to_start_token_optional"
+  }'
+
+# Register Live Activity token (called by app when Live Activity starts)
+curl -X POST http://localhost:8000/register-live-activity-token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "device_id": "your_device_id",
+    "live_activity_token": "live_activity_push_token",
+    "activity_id": "activity_identifier_optional"
   }'
 ```
 
@@ -132,6 +171,33 @@ curl -X POST http://localhost:8000/live-activity/stop-by-id/your_device_id
 curl -X GET http://localhost:8000/live-activity/status/your_device_id
 ```
 
+### **Player Scoring Management (New)**
+```bash
+# Get all player scores
+curl -X GET http://localhost:8000/player-scores
+
+# Get player scores for specific device
+curl -X GET http://localhost:8000/player-scores/your_device_id
+
+# Manually refresh player scores for all devices
+curl -X POST http://localhost:8000/player-scores/refresh
+
+# Manually refresh player scores for specific device
+curl -X POST http://localhost:8000/player-scores/refresh/your_device_id
+```
+
+### NFL Data Management
+```bash
+# Get current NFL games
+curl -X GET http://localhost:8000/games
+
+# Refresh NFL games data
+curl -X POST http://localhost:8000/games/refresh
+
+# Refresh NFL players data
+curl -X POST http://localhost:8000/players/refresh
+```
+
 ### Response Examples
 
 **List Devices Response:**
@@ -142,7 +208,8 @@ curl -X GET http://localhost:8000/live-activity/status/your_device_id
       "device_id": "abc123",
       "user_id": "user_456",
       "league_id": "league_789",
-      "has_push_token": true,
+      "has_remote_notification_token": true,
+      "has_push_to_start_token": true,
       "live_activity_active": true,
       "live_activity_started_at": "2025-09-14T21:53:56.798805",
       "live_activity_last_update": "2025-09-14T21:53:56.798809"
@@ -164,20 +231,90 @@ curl -X GET http://localhost:8000/live-activity/status/your_device_id
 }
 ```
 
+**Player Scores Response:**
+```json
+{
+  "device_id": "abc123",
+  "starter_player_ids": ["4892", "8150", "8228", "4039", "1479", "12506", "3198", "8148", "8259"],
+  "current_pts_ppr": 87.6,
+  "current_projections": 92.3,
+  "total_starters": 9
+}
+```
+
+**All Player Scores Response:**
+```json
+{
+  "player_scores": [
+    {
+      "device_id": "abc123",
+      "starter_player_ids": ["4892", "8150", "8228"],
+      "current_pts_ppr": 87.6,
+      "current_projections": 92.3,
+      "total_starters": 9,
+      "has_live_activity": true
+    },
+    {
+      "device_id": "def456",
+      "starter_player_ids": ["4039", "1479", "12506"],
+      "current_pts_ppr": 64.2,
+      "current_projections": 78.1,
+      "total_starters": 9,
+      "has_live_activity": false
+    }
+  ],
+  "total_devices": 2
+}
+```
+
+**NFL Games Response:**
+```json
+{
+  "games": [
+    {
+      "date": "2025-09-16T21:00:00Z",
+      "name": "Pittsburgh Steelers at New England Patriots",
+      "competitors": [
+        {"abbreviation": "PIT"},
+        {"abbreviation": "NE"}
+      ]
+    }
+  ],
+  "last_fetched": "2025-09-16T08:00:00.123456",
+  "total_games": 1
+}
+```
+
 ## Configuration Notes
 
 ### APNS Environment
-- **Development**: Set `use_sandbox=True` in `main.py`
-- **Production**: Set `use_sandbox=False` in `main.py`
+- **Development**: Set `use_sandbox=True` in `main.py` (line ~482)
+- **Production**: Set `use_sandbox=False` in `main.py` (line ~482)
 
 ### Update Frequency
-- Current: Every 2 minutes (configurable in `startup_tasks()`)
-- Recommended: 1-2 minutes during games, 5+ minutes off-season
+- **Live Activity Updates**: Every minute (line 1374)
+- **Player Score Updates**: Every minute (line 1392)
+- **Game Start Checker**: Every 5 minutes (line 1383)
+- **NFL Games Refresh**: Daily at 8:00 AM (line 1377)
+- **NFL Players Refresh**: Daily at 8:05 AM (line 1380)
+
+### Player Scoring Configuration
+- **GraphQL Endpoint**: Update `self.graphql_url` in `PlayerStatsClient` (line 176)
+- **Season/Week**: Automatically detected from NFL state or defaults to 2025/week 3
+- **Change Threshold**: 0.01 pts_ppr minimum change to trigger updates (line 336)
+- **Concurrent Processing**: All users updated in parallel for efficiency
 
 ### Avatar Support
 - Uses remote Sleeper avatar URLs directly
 - No local caching required
 - Lightweight approach for Live Activity performance
+
+### Performance Optimizations
+- **Batch GraphQL Requests**: Single request per user's starters
+- **Change Detection**: Only sends updates when scores change
+- **Concurrent Updates**: All live activities updated in parallel
+- **Data Caching**: NFL players and games cached daily
+- **Starter ID Caching**: User roster starters cached to reduce API calls
 
 ## Troubleshooting
 
@@ -193,7 +330,34 @@ curl -X GET http://localhost:8000/live-activity/status/your_device_id
 - Ensure Live Activity is active on device
 - Verify network connectivity to Apple's APNS servers
 
+### Player Scoring Issues
+- **No Player Scores**: Check `/player-scores/{device_id}` endpoint for starter data
+- **GraphQL Errors**: Verify GraphQL endpoint URL is correct (line 176 in main.py)
+- **No Score Updates**: Check logs for GraphQL API errors or network issues
+- **Wrong Players**: Verify user is in correct league and has starters set
+- **Debug Commands**:
+  ```bash
+  # Check if user has starters
+  curl http://localhost:8000/player-scores/your_device_id
+
+  # Force refresh scores
+  curl -X POST http://localhost:8000/player-scores/refresh/your_device_id
+
+  # Check NFL state
+  curl http://localhost:8000/state/nfl
+  ```
+
+### Performance Issues
+- **High API Usage**: Increase update intervals in scheduler configuration
+- **Slow Updates**: Check GraphQL endpoint response times
+- **Memory Usage**: Monitor concurrent processing of multiple users
+
 ### Avatar Issues
 - Check Sleeper API responses for valid avatar URLs
 - Verify avatar URLs are accessible from Sleeper CDN
 - Avatar display depends on device's internet connection
+
+### Data Issues
+- **Stale Player Data**: Use `POST /players/refresh` to update NFL players
+- **Missing Games**: Use `POST /games/refresh` to update today's games
+- **Wrong Week**: Check NFL state API for current week detection

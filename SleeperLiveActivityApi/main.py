@@ -54,6 +54,10 @@ class AppState:
         self.games_last_fetched: Optional[datetime] = None
         self.nfl_players: Dict = {}  # NFL players data from Sleeper API
         self.players_last_fetched: Optional[datetime] = None
+        # Player scoring system
+        self.user_previous_pts_ppr: Dict[str, float] = {}  # device_id -> previous total pts_ppr
+        self.user_starter_player_ids: Dict[str, List[str]] = {}  # device_id -> list of starter player IDs
+        self.last_projection_totals: Dict[str, float] = {}  # device_id -> last total projections
 
 app_state = AppState()
 scheduler = BackgroundScheduler()
@@ -161,6 +165,277 @@ class SleeperAPIClient:
             raise
 
 sleeper_client = SleeperAPIClient()
+
+# -----------------------
+# GraphQL client for player stats and projections
+# -----------------------
+class PlayerStatsClient:
+    def __init__(self):
+        self.session = requests.Session()
+        self.session.timeout = 30
+        # You need to replace this with the actual GraphQL endpoint from your API provider
+        # This is a placeholder - the real endpoint is not publicly documented
+        self.graphql_url = "https://sleeper.com/graphql"
+        logger.warning(f"GraphQL endpoint configured: {self.graphql_url}")
+
+    def get_player_scores_and_projections(self, player_ids: List[str], season: str = "2025", week: int = 3) -> Dict:
+        """Fetch player stats and projections for given player IDs using the GraphQL API from read.txt"""
+        if not player_ids:
+            return {"data": {"nfl__regular__2025__3__stat": [], "nfl__regular__2025__3__proj": []}}
+
+        # Build the GraphQL query based on the structure in read.txt
+        query = f"""
+        query get_player_score_and_projections_batch {{
+          nfl__regular__{season}__{week}__stat: stats_for_players_in_week(
+            sport: "nfl"
+            season: "{season}"
+            category: "stat"
+            season_type: "regular"
+            week: {week}
+            player_ids: {json.dumps(player_ids)}
+          ) {{
+            game_id
+            opponent
+            player_id
+            stats
+            team
+            week
+            season
+          }}
+
+          nfl__regular__{season}__{week}__proj: stats_for_players_in_week(
+            sport: "nfl"
+            season: "{season}"
+            category: "proj"
+            season_type: "regular"
+            week: {week}
+            player_ids: {json.dumps(player_ids)}
+          ) {{
+            game_id
+            opponent
+            player_id
+            stats
+            team
+            week
+            season
+          }}
+        }}
+        """
+
+        try:
+            logger.info(f"Sending GraphQL request for {len(player_ids)} players to {self.graphql_url}")
+            response = self.session.post(
+                self.graphql_url,
+                json={"query": query},
+                headers={"Content-Type": "application/json"},
+                timeout=30
+            )
+            response.raise_for_status()
+            result = response.json()
+            logger.info(f"GraphQL response status: {response.status_code}")
+            if "data" in result:
+                stats_count = len(result["data"].get(f"nfl__regular__{season}__{week}__stat", []))
+                proj_count = len(result["data"].get(f"nfl__regular__{season}__{week}__proj", []))
+                logger.info(f"Received {stats_count} player stats and {proj_count} projections")
+            return result
+        except Exception as e:
+            logger.error(f"Error fetching player stats from GraphQL: {e}")
+            logger.error(f"GraphQL URL: {self.graphql_url}")
+            logger.error(f"Query sample: {query[:200]}...")
+            # Return empty data structure to avoid crashes
+            return {"data": {"nfl__regular__2025__3__stat": [], "nfl__regular__2025__3__proj": []}}
+
+player_stats_client = PlayerStatsClient()
+
+# -----------------------
+# Player scoring helper functions
+# -----------------------
+def get_user_starter_player_ids(device_id: str) -> List[str]:
+    """Get the list of starter player IDs for a user's live activity"""
+    if device_id not in app_state.user_configs:
+        return []
+
+    user_config = app_state.user_configs[device_id]
+    league_id = user_config["league_id"]
+    user_id = user_config["user_id"]
+
+    try:
+        # Get current week
+        nfl_state = sleeper_client.get_nfl_state()
+        current_week = nfl_state.get("week", 1) if isinstance(nfl_state, dict) else 1
+
+        # Get league rosters
+        rosters = sleeper_client.get_league_rosters(league_id)
+
+        # Find user's roster
+        user_roster = None
+        for roster in rosters:
+            if roster.get("owner_id") == user_id:
+                user_roster = roster
+                break
+
+        if user_roster and "starters" in user_roster:
+            starter_ids = user_roster["starters"]
+            # Cache the starter IDs for this device
+            app_state.user_starter_player_ids[device_id] = starter_ids
+            logger.info(f"Found {len(starter_ids)} starters for device {device_id}")
+            return starter_ids
+        else:
+            logger.warning(f"No roster or starters found for device {device_id}")
+            return []
+
+    except Exception as e:
+        logger.error(f"Error getting starter player IDs for device {device_id}: {e}")
+        return []
+
+def calculate_total_pts_ppr(player_stats_data: List[Dict]) -> float:
+    """Calculate total pts_ppr from player stats data"""
+    total_pts_ppr = 0.0
+    logger.debug(f"Calculating pts_ppr for {len(player_stats_data)} players")
+
+    for i, player_data in enumerate(player_stats_data):
+        player_id = player_data.get("player_id", "unknown")
+        stats = player_data.get("stats", {})
+        if isinstance(stats, dict):
+            pts_ppr = stats.get("pts_ppr", 0.0)
+            if isinstance(pts_ppr, (int, float)):
+                total_pts_ppr += float(pts_ppr)
+                logger.debug(f"Player {player_id}: {pts_ppr} pts_ppr")
+            else:
+                logger.debug(f"Player {player_id}: No valid pts_ppr data")
+        else:
+            logger.debug(f"Player {player_id}: No stats data")
+
+    total_pts_ppr = round(total_pts_ppr, 2)
+    logger.info(f"Total pts_ppr calculated: {total_pts_ppr}")
+    return total_pts_ppr
+
+def calculate_total_projections(player_proj_data: List[Dict]) -> float:
+    """Calculate total projected pts_ppr from player projection data"""
+    total_projections = 0.0
+    logger.debug(f"Calculating projections for {len(player_proj_data)} players")
+
+    for player_data in player_proj_data:
+        player_id = player_data.get("player_id", "unknown")
+        stats = player_data.get("stats", {})
+        if isinstance(stats, dict):
+            pts_ppr = stats.get("pts_ppr", 0.0)
+            if isinstance(pts_ppr, (int, float)):
+                total_projections += float(pts_ppr)
+                # Get player name from cached NFL players data
+                player_name = app_state.nfl_players.get(player_id, {}).get("full_name", f"Player {player_id}")
+                logger.info(f"{player_name} ({player_id}): {pts_ppr} projected pts_ppr")
+            else:
+                logger.debug(f"Player {player_id}: No valid projected pts_ppr data")
+        else:
+            logger.debug(f"Player {player_id}: No projection stats data")
+
+    total_projections = round(total_projections, 2)
+    logger.info(f"Total projections calculated: {total_projections}")
+    return total_projections
+
+async def update_user_player_scores(device_id: str):
+    """Update player scores and projections for a specific user/device"""
+    try:
+        # Get starter player IDs
+        starter_ids = get_user_starter_player_ids(device_id)
+        if not starter_ids:
+            logger.warning(f"No starter IDs found for device {device_id}")
+            return
+
+        # Get current week from NFL state
+        nfl_state_data = await asyncio.to_thread(sleeper_client.get_nfl_state)
+        current_week = nfl_state_data.get("week", 1) if isinstance(nfl_state_data, dict) else 1
+
+        # Fetch player stats and projections
+        logger.info(f"Fetching stats for {len(starter_ids)} players for device {device_id}")
+        stats_data = await asyncio.to_thread(
+            player_stats_client.get_player_scores_and_projections,
+            starter_ids,
+            "2025",
+            current_week
+        )
+
+        if "data" in stats_data:
+            # Extract player stats and projections
+            player_stats = stats_data["data"].get(f"nfl__regular__2025__{current_week}__stat", [])
+            player_projections = stats_data["data"].get(f"nfl__regular__2025__{current_week}__proj", [])
+
+            # Calculate totals
+            current_pts_ppr = calculate_total_pts_ppr(player_stats)
+            current_projections = calculate_total_projections(player_projections)
+
+            logger.info(f"Device {device_id}: Current pts_ppr={current_pts_ppr}, Projections={current_projections}")
+
+            # Get previous scores
+            previous_pts_ppr = app_state.user_previous_pts_ppr.get(device_id, 0.0)
+            previous_projections = app_state.last_projection_totals.get(device_id, 0.0)
+
+            # Check if scores or projections have changed
+            pts_ppr_changed = abs(current_pts_ppr - previous_pts_ppr) > 0.01  # Small tolerance for floating point
+            projections_changed = abs(current_projections - previous_projections) > 0.01
+
+            if pts_ppr_changed or projections_changed:
+                logger.info(f"Device {device_id}: pts_ppr changed from {previous_pts_ppr} to {current_pts_ppr}, projections from {previous_projections} to {current_projections}")
+
+                # Update stored values
+                app_state.user_previous_pts_ppr[device_id] = current_pts_ppr
+                app_state.last_projection_totals[device_id] = current_projections
+
+                # Update live activity with new scoring data
+                if device_id in app_state.active_live_activities:
+                    activity = app_state.active_live_activities[device_id]
+                    user_config = activity["user_config"]
+
+                    # Get live activity token
+                    live_activity_token = app_state.live_activity_tokens.get(device_id)
+                    if live_activity_token:
+                        # Get comprehensive activity data and add player scoring info
+                        activity_data = await live_activity_manager.get_comprehensive_activity_data(user_config)
+
+                        # Add player scoring information to the activity data
+                        activity_data["playerPtsPpr"] = current_pts_ppr
+                        activity_data["projectedTotal"] = current_projections
+
+                        # Create appropriate message based on what changed
+                        if pts_ppr_changed and current_pts_ppr > 0:
+                            activity_data["message"] = f"Player scores updated: {current_pts_ppr:.1f} pts"
+                        elif projections_changed:
+                            activity_data["message"] = f"Projections updated: {current_projections:.1f} pts projected"
+                        else:
+                            activity_data["message"] = f"Fantasy data updated"
+
+                        # Send update
+                        await live_activity_manager.send_live_activity_update(live_activity_token, activity_data)
+
+                        # Update last update timestamp
+                        activity["last_update"] = datetime.now()
+
+                        logger.info(f"Updated live activity for device {device_id} with new player scores")
+                    else:
+                        logger.warning(f"No live activity token for device {device_id}")
+            else:
+                logger.debug(f"Device {device_id}: No significant change in pts_ppr ({current_pts_ppr})")
+
+        else:
+            logger.error(f"Invalid stats data structure for device {device_id}")
+
+    except Exception as e:
+        logger.exception(f"Error updating player scores for device {device_id}: {e}")
+
+async def update_all_live_activity_player_scores():
+    """Update player scores for all active live activities"""
+    logger.info(f"Updating player scores for {len(app_state.active_live_activities)} active live activities")
+
+    # Process all active live activities
+    update_tasks = []
+    for device_id in list(app_state.active_live_activities.keys()):
+        task = update_user_player_scores(device_id)
+        update_tasks.append(task)
+
+    # Run all updates concurrently for efficiency
+    if update_tasks:
+        await asyncio.gather(*update_tasks, return_exceptions=True)
 
 # -----------------------
 # ESPN API client for game schedules
@@ -1154,6 +1429,15 @@ def startup_tasks():
     # Schedule game start checker every 5 minutes
     scheduler.add_job(func=check_and_start_live_activities, trigger="interval", minutes=5, id="game_start_checker")
 
+    # Schedule player score updates every minute
+    def schedule_player_score_updates():
+        try:
+            submit_to_apns_loop(update_all_live_activity_player_scores())
+        except Exception:
+            logger.exception("Failed to run scheduled player score updates")
+
+    scheduler.add_job(func=schedule_player_score_updates, trigger="interval", minutes=1, id="player_score_updates", next_run_time=datetime.now())
+
     # Load players data on startup (from file if exists, otherwise fetch from API)
     load_players_on_startup()
 
@@ -1194,6 +1478,111 @@ def refresh_nfl_players():
 @app.route("/health", methods=["GET"])
 def health_check():
     return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})
+
+@app.route("/player-scores/<device_id>", methods=["GET"])
+def get_player_scores(device_id):
+    """Get player scoring data for a specific device"""
+    if device_id not in app_state.user_configs:
+        return jsonify({"error": "Device not found"}), 404
+
+    starter_ids = app_state.user_starter_player_ids.get(device_id, [])
+    current_pts_ppr = app_state.user_previous_pts_ppr.get(device_id, 0.0)
+    current_projections = app_state.last_projection_totals.get(device_id, 0.0)
+
+    return jsonify({
+        "device_id": device_id,
+        "starter_player_ids": starter_ids,
+        "current_pts_ppr": current_pts_ppr,
+        "current_projections": current_projections,
+        "total_starters": len(starter_ids)
+    })
+
+@app.route("/player-scores", methods=["GET"])
+def get_all_player_scores():
+    """Get player scoring data for all devices"""
+    scores_data = []
+    for device_id in app_state.user_configs.keys():
+        starter_ids = app_state.user_starter_player_ids.get(device_id, [])
+        current_pts_ppr = app_state.user_previous_pts_ppr.get(device_id, 0.0)
+        current_projections = app_state.last_projection_totals.get(device_id, 0.0)
+
+        scores_data.append({
+            "device_id": device_id,
+            "starter_player_ids": starter_ids,
+            "current_pts_ppr": current_pts_ppr,
+            "current_projections": current_projections,
+            "total_starters": len(starter_ids),
+            "has_live_activity": device_id in app_state.active_live_activities
+        })
+
+    return jsonify({
+        "player_scores": scores_data,
+        "total_devices": len(scores_data)
+    })
+
+@app.route("/player-scores/refresh/<device_id>", methods=["POST"])
+def refresh_player_scores(device_id):
+    """Manually refresh player scores for a specific device"""
+    if device_id not in app_state.user_configs:
+        return jsonify({"error": "Device not found"}), 404
+
+    try:
+        # Submit the update task to the APNS loop
+        submit_to_apns_loop(update_user_player_scores(device_id))
+        return jsonify({
+            "status": "success",
+            "message": f"Player scores refresh initiated for device {device_id}"
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/player-scores/refresh", methods=["POST"])
+def refresh_all_player_scores():
+    """Manually refresh player scores for all devices"""
+    try:
+        # Submit the update task to the APNS loop
+        submit_to_apns_loop(update_all_live_activity_player_scores())
+        return jsonify({
+            "status": "success",
+            "message": "Player scores refresh initiated for all active live activities"
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/debug/graphql-test", methods=["POST"])
+def test_graphql():
+    """Test GraphQL endpoint with sample player IDs"""
+    try:
+        data = request.get_json() or {}
+        player_ids = data.get("player_ids", ["4892", "8150", "8228"])  # Sample IDs from read.txt
+        season = data.get("season", "2025")
+        week = data.get("week", 3)
+
+        # Test the GraphQL call
+        result = player_stats_client.get_player_scores_and_projections(player_ids, season, week)
+
+        return jsonify({
+            "status": "success",
+            "graphql_url": player_stats_client.graphql_url,
+            "player_ids": player_ids,
+            "season": season,
+            "week": week,
+            "result": result
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/debug/config", methods=["GET"])
+def debug_config():
+    """Get debug configuration info"""
+    return jsonify({
+        "graphql_url": player_stats_client.graphql_url,
+        "active_live_activities": len(app_state.active_live_activities),
+        "user_configs": len(app_state.user_configs),
+        "cached_starter_ids": {k: len(v) for k, v in app_state.user_starter_player_ids.items()},
+        "cached_pts_ppr": app_state.user_previous_pts_ppr,
+        "projection_totals": app_state.last_projection_totals
+    })
 
 if __name__ == "__main__":
     startup_tasks()
