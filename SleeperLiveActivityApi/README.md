@@ -10,7 +10,9 @@ This API provides real-time push notifications for Sleeper fantasy football Live
 - ✅ **GraphQL API integration for player stats and projections**
 - ✅ **User and opponent projected score tracking**
 - ✅ **Optimized single GraphQL call for all active players**
-- ✅ **30-second update intervals for real-time responsiveness**
+- ✅ **30-second unified update intervals for player and team scores**
+- ✅ **Cross-matchup player tracking (user + opponent players)**
+- ✅ **Top scoring player notifications with APNS alerts**
 - ✅ **Efficient batch processing for starter players**
 - ✅ Remote avatar URL support
 - ✅ Optional message field for notifications
@@ -63,43 +65,50 @@ The API will run on `http://localhost:8000`
 
 1. **iOS App** starts Live Activity and registers with API
 2. **API** monitors Sleeper data and player scores every 30 seconds with optimized batch processing
-3. **API** detects score changes (team totals, player pts_ppr, and projected scores)
-4. **API** sends APNS push notification with:
+3. **API** fetches stats for both user and opponent players in single GraphQL call
+4. **API** detects score changes and identifies top performing player from either team
+5. **API** sends APNS push notification with:
    - Updated team scores
    - Player-level pts_ppr totals
    - **User projected score total**
    - **Opponent projected score total**
+   - **Top scoring player notification (🔥 for user, ⚡ for opponent)**
+   - **APNS alert for big plays (3+ points)**
    - Team names and avatars
    - Game status
-   - Optional custom messages
-5. **Live Activity** receives push and updates UI immediately
+6. **Live Activity** receives push and updates UI immediately
 
 ### Optimized Player Scoring System
 
-1. **Global Player Collection**: API collects all unique player IDs from all active live activities
-2. **Single GraphQL Request**: One consolidated GraphQL call fetches stats for ALL players across ALL users
+1. **Global Player Collection**: API collects all unique player IDs from all active live activities AND their opponents
+2. **Single GraphQL Request**: One consolidated GraphQL call fetches stats for ALL players across ALL matchups
 3. **Smart Caching**: Player stats cached and distributed to individual users from single source
-4. **Score Calculation**: Calculates both user and opponent projected totals from cached data
-5. **Change Detection**: Only updates when pts_ppr scores or projections actually change
-6. **Live Updates**: All active live activities updated concurrently every 30 seconds
+4. **Cross-Team Analysis**: Identifies top scoring player from either team in each matchup
+5. **Score Calculation**: Calculates both user and opponent projected totals from cached data
+6. **Change Detection**: Only updates when pts_ppr scores or projections actually change
+7. **Smart Messaging**: Shows top performer with emojis (🔥 user, ⚡ opponent) and alerts for big plays
+8. **Live Updates**: All active live activities updated concurrently every 30 seconds
 
 **Performance Benefits:**
 - **90% API reduction**: 10 users = 1 GraphQL call instead of 10
-- **Faster updates**: 30-second intervals (was 60 seconds)
+- **Unified timing**: Both player and team scores update every 30 seconds
 - **Better scalability**: 100 users still = 1 API call
 - **Opponent tracking**: Automatically calculates opponent projected scores
+- **Cross-matchup awareness**: Tracks ALL players in ALL active matchups
 
 ### Key Benefits
 
-- **Real-time updates**: 30-second player score and projection monitoring
+- **Real-time updates**: 30-second unified monitoring for both player and team scores
 - **Battery efficient**: App doesn't need to run background tasks
 - **Player-level precision**: Individual player pts_ppr tracking and projections
-- **Optimized efficiency**: Single GraphQL request for ALL players across ALL users
+- **Cross-matchup intelligence**: Tracks both user and opponent players automatically
+- **Smart notifications**: Top scoring player alerts with team indicators (🔥/⚡)
+- **Push alerts**: APNS notifications for big plays (3+ point gains)
+- **Optimized efficiency**: Single GraphQL request for ALL players across ALL matchups
 - **Opponent awareness**: Automatic opponent projected score tracking
 - **Smart change detection**: Only sends updates when scores actually change
 - **Remote avatar support**: Uses Sleeper's avatar URLs directly
 - **Reliable**: Backend monitors continuously even when app is closed
-- **Flexible messaging**: Optional message field for custom notifications
 
 ## API Endpoints
 
@@ -110,10 +119,8 @@ The API will run on `http://localhost:8000`
 - `GET /devices/{device_id}` - Get detailed information about a specific device
 
 ### Live Activity Control
-- `POST /live-activity/start/{device_id}` - Start monitoring for a device (original endpoint)
-- `POST /live-activity/end/{device_id}` - Stop monitoring for a device (original endpoint)
-- `POST /live-activity/start-by-id/{device_id}` - Start Live Activity by device ID (new)
-- `POST /live-activity/stop-by-id/{device_id}` - Stop Live Activity by device ID (new)
+- `POST /live-activity/start-by-id/{device_id}` - Start Live Activity by device ID
+- `POST /live-activity/stop-by-id/{device_id}` - Stop Live Activity by device ID
 - `GET /live-activity/status/{device_id}` - Check if monitoring is active
 
 ### **Player Scoring (New)**
@@ -309,11 +316,10 @@ curl -X POST http://localhost:8000/players/refresh
 - **Production**: Set `use_sandbox=False` in `main.py` (line ~482)
 
 ### Update Frequency
-- **Live Activity Updates**: Every minute (line ~1574)
-- **Optimized Player Score Updates**: Every 30 seconds (line ~1581)
-- **Game Start Checker**: Every 5 minutes (line ~1572)
-- **NFL Games Refresh**: Daily at 8:00 AM (line ~1567)
-- **NFL Players Refresh**: Daily at 8:05 AM (line ~1570)
+- **Combined Live Activity Updates**: Every 30 seconds (unified player and team scores)
+- **Game Start Checker**: Every 5 minutes
+- **NFL Games Refresh**: Daily at 8:00 AM
+- **NFL Players Refresh**: Daily at 8:05 AM
 
 ### Player Scoring Configuration
 - **GraphQL Endpoint**: Update `self.graphql_url` in `PlayerStatsClient` (line ~192)

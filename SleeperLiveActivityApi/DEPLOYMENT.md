@@ -181,7 +181,7 @@ curl -X POST http://localhost:8000/register \
   }'
 
 # Test Live Activity start
-curl -X POST http://localhost:8000/live-activity/start/test_device
+curl -X POST http://localhost:8000/live-activity/start-by-id/test_device
 ```
 
 ### 2. iOS App Testing

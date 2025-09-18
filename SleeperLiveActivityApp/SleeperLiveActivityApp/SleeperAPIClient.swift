@@ -137,12 +137,12 @@ class SleeperAPIClient {
     }
     
     func startLiveActivity(deviceID: String) async throws {
-        let url = URL(string: "\(baseURL)/live-activity/start/\(deviceID)")!
+        let url = URL(string: "\(baseURL)/live-activity/start-by-id/\(deviceID)")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        
+
         let (_, response) = try await session.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
             throw APIError.liveActivityFailed
@@ -150,12 +150,12 @@ class SleeperAPIClient {
     }
     
     func endLiveActivity(deviceID: String) async throws {
-        let url = URL(string: "\(baseURL)/live-activity/end/\(deviceID)")!
+        let url = URL(string: "\(baseURL)/live-activity/stop-by-id/\(deviceID)")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        
+
         let (_, response) = try await session.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
             throw APIError.liveActivityFailed

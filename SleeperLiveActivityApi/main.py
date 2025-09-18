@@ -18,6 +18,27 @@ from dotenv import load_dotenv
 # Async / APNS
 import asyncio
 import aiohttp
+
+# =============================================================================
+# CONFIGURABLE UPDATE FREQUENCIES (in seconds)
+# =============================================================================
+LIVE_ACTIVITY_UPDATE_INTERVAL = 30     # Both player and team score updates
+GAME_START_CHECK_INTERVAL = 300        # NFL game start detection (5 minutes)
+NFL_GAMES_REFRESH_HOUR = 8             # Daily NFL games refresh (8 AM)
+NFL_PLAYERS_REFRESH_HOUR = 8           # Daily NFL players refresh (8:05 AM)
+NFL_PLAYERS_REFRESH_MINUTE = 5
+
+# Cache expiration for on-demand requests
+PLAYER_CACHE_MAX_AGE = 60              # Max age before triggering fresh fetch on app load
+
+# Global NFL state cache (updated once daily)
+global_nfl_week = 1                    # Default fallback
+global_nfl_week_last_update = None
+
+# Cache configurations
+LEAGUE_USERS_CACHE_SECONDS = 30 * 60   # 30 minutes (same as avatar cache)
+LEAGUE_INFO_CACHE_SECONDS = 24 * 60 * 60  # 24 hours
+LEAGUE_ROSTERS_CACHE_SECONDS = 10 * 60  # 10 minutes (rosters change more frequently)
 from aioapns import APNs, NotificationRequest, PushType
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -51,6 +72,9 @@ class AppState:
         self.live_activity_tokens: Dict[str, str] = {}  # device_id -> live activity token
         self.avatar_cache: Dict[str, str] = {}  # URL -> base64 data
         self.league_avatar_cache: Dict[str, Tuple[float, Dict[str, str]]] = {}  # league_id -> (timestamp, {user_id: avatar_url})
+        self.league_users_cache: Dict[str, Tuple[float, List[Dict]]] = {}  # league_id -> (timestamp, users_list)
+        self.league_info_cache: Dict[str, Tuple[float, Dict]] = {}  # league_id -> (timestamp, league_info)
+        self.league_rosters_cache: Dict[str, Tuple[float, List[Dict]]] = {}  # league_id -> (timestamp, rosters_list)
         self.last_scores: Dict[str, Dict] = {}  # device_id -> last score data
         self.nfl_games: List[Dict] = []  # today's NFL games from ESPN
         self.games_last_fetched: Optional[datetime] = None
@@ -60,6 +84,7 @@ class AppState:
         self.user_previous_pts_ppr: Dict[str, float] = {}  # device_id -> previous total pts_ppr
         self.user_starter_player_ids: Dict[str, List[str]] = {}  # device_id -> list of starter player IDs
         self.last_projection_totals: Dict[str, float] = {}  # device_id -> last total projections
+        self.previous_player_scores: Dict[str, Dict[str, float]] = {}  # device_id -> {player_id: pts_ppr}
 
 app_state = AppState()
 scheduler = BackgroundScheduler()
@@ -146,6 +171,15 @@ class SleeperAPIClient:
             return response.json()
         except Exception as e:
             logger.error(f"Error fetching league users: {e}")
+            raise
+
+    def get_league_info(self, league_id: str) -> Dict:
+        try:
+            response = self.session.get(f"{self.BASE_URL}/league/{league_id}", timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Error fetching league info: {e}")
             raise
 
     def get_matchups(self, league_id: str, week: int) -> List[Dict]:
@@ -269,25 +303,75 @@ class OptimizedPlayerStatsManager:
         self.current_season: str = "2025"
 
     def get_all_active_player_ids(self) -> List[str]:
-        """Collect unique player IDs from all active live activities"""
+        """Collect unique player IDs from all active live activities AND their opponents"""
         all_player_ids = set()
 
-        for device_id in app_state.active_live_activities.keys():
-            starter_ids = app_state.user_starter_player_ids.get(device_id, [])
-            if not starter_ids:
-                # Try to fetch starters if not cached
-                starter_ids = get_user_starter_player_ids(device_id)
-            all_player_ids.update(starter_ids)
+        logger.info(f"DEBUG: Found {len(app_state.active_live_activities)} active live activities")
+        current_week = get_current_nfl_week()
 
-        logger.info(f"Collected {len(all_player_ids)} unique players from {len(app_state.active_live_activities)} active live activities")
+        for device_id in app_state.active_live_activities.keys():
+            try:
+                # Get user's starter IDs
+                starter_ids = app_state.user_starter_player_ids.get(device_id, [])
+                if not starter_ids:
+                    # Try to fetch starters if not cached
+                    logger.info(f"DEBUG: No cached starters for {device_id}, fetching...")
+                    starter_ids = get_user_starter_player_ids(device_id)
+                logger.info(f"DEBUG: Device {device_id} has {len(starter_ids)} starters")
+                all_player_ids.update(starter_ids)
+
+                # Also get opponent's starter IDs
+                user_config = app_state.active_live_activities[device_id]["user_config"]
+                league_id = user_config["league_id"]
+                user_id = user_config["user_id"]
+
+                # Get matchups and rosters to find opponent
+                matchups = sleeper_client.get_matchups(league_id, current_week)
+                rosters = get_cached_league_rosters(league_id)
+
+                # Find user's roster and matchup
+                user_roster = None
+                for roster in rosters:
+                    if roster.get("owner_id") == user_id:
+                        user_roster = roster
+                        break
+
+                if user_roster:
+                    user_matchup = None
+                    for m in matchups:
+                        if m.get("roster_id") == user_roster.get("roster_id"):
+                            user_matchup = m
+                            break
+
+                    if user_matchup:
+                        matchup_id = user_matchup.get("matchup_id")
+                        # Find opponent roster in same matchup
+                        for m in matchups:
+                            if (m.get("matchup_id") == matchup_id and
+                                m.get("roster_id") != user_roster.get("roster_id")):
+                                # Found opponent matchup, now get their roster
+                                opponent_roster_id = m.get("roster_id")
+                                for roster in rosters:
+                                    if roster.get("roster_id") == opponent_roster_id:
+                                        opponent_starters = roster.get("starters", [])
+                                        if opponent_starters:
+                                            all_player_ids.update(opponent_starters)
+                                            logger.info(f"DEBUG: Added {len(opponent_starters)} opponent starters for {device_id}")
+                                        break
+                                break
+
+            except Exception as e:
+                logger.error(f"Error collecting player IDs for device {device_id}: {e}")
+                # Continue with other devices even if one fails
+
+        logger.info(f"Collected {len(all_player_ids)} unique players (including opponents) from {len(app_state.active_live_activities)} active live activities")
         return list(all_player_ids)
 
     async def update_all_player_stats(self):
         """Single GraphQL call for ALL active players across ALL live activities"""
         try:
-            # Get current NFL week
-            nfl_state_data = await asyncio.to_thread(sleeper_client.get_nfl_state)
-            self.current_week = nfl_state_data.get("week", 3) if isinstance(nfl_state_data, dict) else 3
+            # Get current NFL week from cache (no API call needed!)
+            self.current_week = get_current_nfl_week()
 
             # Collect all unique player IDs
             all_player_ids = self.get_all_active_player_ids()
@@ -379,6 +463,79 @@ class OptimizedPlayerStatsManager:
         if update_tasks:
             await asyncio.gather(*update_tasks, return_exceptions=True)
 
+    def get_top_scoring_player_from_matchup(self, device_id: str) -> tuple[str, float, bool]:
+        """Find the player with the highest point increase since last update from either team in the matchup"""
+        previous_scores = app_state.previous_player_scores.get(device_id, {})
+        top_player_name = ""
+        top_point_diff = 0.0
+        is_user_player = True
+
+        try:
+            # Get user's starter IDs
+            user_starter_ids = app_state.user_starter_player_ids.get(device_id, [])
+
+            # Get opponent's starter IDs
+            opponent_starter_ids = []
+            if device_id in app_state.active_live_activities:
+                user_config = app_state.active_live_activities[device_id]["user_config"]
+                league_id = user_config["league_id"]
+                user_id = user_config["user_id"]
+                current_week = get_current_nfl_week()
+
+                # Get matchups and rosters to find opponent
+                matchups = sleeper_client.get_matchups(league_id, current_week)
+                rosters = get_cached_league_rosters(league_id)
+
+                # Find user's roster and matchup
+                user_roster = None
+                for roster in rosters:
+                    if roster.get("owner_id") == user_id:
+                        user_roster = roster
+                        break
+
+                if user_roster:
+                    user_matchup = None
+                    for m in matchups:
+                        if m.get("roster_id") == user_roster.get("roster_id"):
+                            user_matchup = m
+                            break
+
+                    if user_matchup:
+                        matchup_id = user_matchup.get("matchup_id")
+                        # Find opponent roster in same matchup
+                        for m in matchups:
+                            if (m.get("matchup_id") == matchup_id and
+                                m.get("roster_id") != user_roster.get("roster_id")):
+                                opponent_roster_id = m.get("roster_id")
+                                for roster in rosters:
+                                    if roster.get("roster_id") == opponent_roster_id:
+                                        opponent_starter_ids = roster.get("starters", [])
+                                        break
+                                break
+
+            # Check all players from both teams
+            all_players = [(pid, True) for pid in user_starter_ids] + [(pid, False) for pid in opponent_starter_ids]
+
+            for player_id, is_user in all_players:
+                current_data = self.player_stats_cache.get(player_id, {})
+                current_score = float(current_data.get("pts_ppr", 0.0))
+                previous_score = previous_scores.get(player_id, 0.0)
+
+                point_diff = current_score - previous_score
+
+                if point_diff > top_point_diff:
+                    top_point_diff = point_diff
+                    # Get player name from NFL players cache
+                    player_info = app_state.nfl_players.get(player_id, {})
+                    player_name = player_info.get("full_name", player_info.get("last_name", f"Player {player_id}"))
+                    top_player_name = player_name
+                    is_user_player = is_user
+
+        except Exception as e:
+            logger.error(f"Error finding top scoring player for {device_id}: {e}")
+
+        return top_player_name, top_point_diff, is_user_player
+
     async def update_single_live_activity_from_cache(self, device_id: str):
         """Update a single live activity using cached player data"""
         try:
@@ -393,10 +550,71 @@ class OptimizedPlayerStatsManager:
             pts_ppr_changed = abs(current_pts_ppr - previous_pts_ppr) > 0.01
             projections_changed = abs(current_projections - previous_projections) > 0.01
 
-            if pts_ppr_changed or projections_changed:
-                logger.info(f"Device {device_id}: pts_ppr changed from {previous_pts_ppr} to {current_pts_ppr}, projections from {previous_projections} to {current_projections}")
+            logger.info(f"DEBUG: Device {device_id} - current: {current_pts_ppr:.2f}pts/{current_projections:.2f}proj, previous: {previous_pts_ppr:.2f}pts/{previous_projections:.2f}proj, changed: {pts_ppr_changed}/{projections_changed}")
 
-                # Update stored values
+            # Always check for top scoring player from either team
+            top_player_name, top_point_diff, is_user_player = self.get_top_scoring_player_from_matchup(device_id)
+
+            # Store current individual player scores for next comparison (both user and opponent)
+            current_player_scores = {}
+
+            # Get user starters
+            user_starter_ids = app_state.user_starter_player_ids.get(device_id, [])
+            for player_id in user_starter_ids:
+                player_data = self.player_stats_cache.get(player_id, {})
+                current_player_scores[player_id] = float(player_data.get("pts_ppr", 0.0))
+
+            # Get opponent starters and add to tracking
+            try:
+                if device_id in app_state.active_live_activities:
+                    user_config = app_state.active_live_activities[device_id]["user_config"]
+                    league_id = user_config["league_id"]
+                    user_id = user_config["user_id"]
+                    current_week = get_current_nfl_week()
+
+                    matchups = sleeper_client.get_matchups(league_id, current_week)
+                    rosters = get_cached_league_rosters(league_id)
+
+                    # Find opponent's starters
+                    user_roster = None
+                    for roster in rosters:
+                        if roster.get("owner_id") == user_id:
+                            user_roster = roster
+                            break
+
+                    if user_roster:
+                        user_matchup = None
+                        for m in matchups:
+                            if m.get("roster_id") == user_roster.get("roster_id"):
+                                user_matchup = m
+                                break
+
+                        if user_matchup:
+                            matchup_id = user_matchup.get("matchup_id")
+                            for m in matchups:
+                                if (m.get("matchup_id") == matchup_id and
+                                    m.get("roster_id") != user_roster.get("roster_id")):
+                                    opponent_roster_id = m.get("roster_id")
+                                    for roster in rosters:
+                                        if roster.get("roster_id") == opponent_roster_id:
+                                            opponent_starters = roster.get("starters", [])
+                                            for player_id in opponent_starters:
+                                                player_data = self.player_stats_cache.get(player_id, {})
+                                                current_player_scores[player_id] = float(player_data.get("pts_ppr", 0.0))
+                                            break
+                                    break
+            except Exception as e:
+                logger.error(f"Error tracking opponent scores for {device_id}: {e}")
+
+            app_state.previous_player_scores[device_id] = current_player_scores
+
+            if pts_ppr_changed or projections_changed or (top_player_name and top_point_diff > 0.1):
+                logger.info(f"Device {device_id}: pts_ppr changed from {previous_pts_ppr} to {current_pts_ppr}, projections from {previous_projections} to {current_projections}")
+                if top_player_name and top_point_diff > 0:
+                    team_indicator = "YOUR" if is_user_player else "OPP"
+                    logger.info(f"Top performer: {top_player_name} (+{top_point_diff:.1f} pts) [{team_indicator}]")
+
+                # Update stored total values
                 app_state.user_previous_pts_ppr[device_id] = current_pts_ppr
                 app_state.last_projection_totals[device_id] = current_projections
 
@@ -408,6 +626,7 @@ class OptimizedPlayerStatsManager:
                     # Get live activity token
                     live_activity_token = app_state.live_activity_tokens.get(device_id)
                     if live_activity_token:
+                        logger.info(f"DEBUG: Sending update to live activity token for {device_id}")
                         # Get comprehensive activity data and add player scoring info
                         activity_data = await live_activity_manager.get_comprehensive_activity_data(user_config)
 
@@ -415,23 +634,27 @@ class OptimizedPlayerStatsManager:
                         activity_data["playerPtsPpr"] = current_pts_ppr
                         activity_data["projectedTotal"] = current_projections
 
-                        # Create appropriate message based on what changed
-                        if pts_ppr_changed and current_pts_ppr > 0:
-                            activity_data["message"] = f"Player scores updated: {current_pts_ppr:.1f} pts"
-                        elif projections_changed:
-                            activity_data["message"] = f"Projections updated: {current_projections:.1f} pts projected"
+                        # Create message with top scoring player from either team
+                        if top_player_name and top_point_diff > 0.1:
+                            team_prefix = "🔥 " if is_user_player else "⚡ "
+                            activity_data["message"] = f"{team_prefix}{top_player_name} +{top_point_diff:.1f} pts"
                         else:
-                            activity_data["message"] = f"Fantasy data updated"
+                            activity_data["message"] = ""
 
-                        # Send update
-                        await live_activity_manager.send_live_activity_update(live_activity_token, activity_data)
+                        # Determine if we need an alert (3+ points)
+                        needs_alert = top_point_diff >= 3.0
+
+                        # Send update with potential alert
+                        await live_activity_manager.send_live_activity_update(live_activity_token, activity_data, needs_alert)
 
                         # Update last update timestamp
                         activity["last_update"] = datetime.now()
 
                         logger.info(f"Updated live activity for device {device_id} with new player scores")
                     else:
-                        logger.warning(f"No live activity token for device {device_id}")
+                        logger.warning(f"DEBUG: No live activity token for device {device_id}")
+                else:
+                    logger.warning(f"DEBUG: Device {device_id} not in active_live_activities")
             else:
                 logger.debug(f"Device {device_id}: No significant change in pts_ppr ({current_pts_ppr}) or projections ({current_projections})")
 
@@ -454,12 +677,8 @@ def get_user_starter_player_ids(device_id: str) -> List[str]:
     user_id = user_config["user_id"]
 
     try:
-        # Get current week
-        nfl_state = sleeper_client.get_nfl_state()
-        current_week = nfl_state.get("week", 1) if isinstance(nfl_state, dict) else 1
-
-        # Get league rosters
-        rosters = sleeper_client.get_league_rosters(league_id)
+        # Get league rosters from cache
+        rosters = get_cached_league_rosters(league_id)
 
         # Find user's roster
         user_roster = None
@@ -570,6 +789,107 @@ def fetch_nfl_games_from_espn() -> List[Dict]:
         logger.error(f"Failed to fetch NFL games from ESPN: {e}")
         return []
 
+def update_nfl_week():
+    """Update the global NFL week cache (called once daily)."""
+    global global_nfl_week, global_nfl_week_last_update
+    try:
+        nfl_state = sleeper_client.get_nfl_state()
+        if isinstance(nfl_state, dict) and "week" in nfl_state:
+            global_nfl_week = nfl_state["week"]
+            global_nfl_week_last_update = datetime.now()
+            logger.info(f"Updated global NFL week to: {global_nfl_week}")
+        else:
+            logger.warning("Failed to get valid NFL week from state")
+    except Exception as e:
+        logger.error(f"Failed to update NFL week: {e}")
+
+def get_current_nfl_week() -> int:
+    """Get current NFL week from cache (no API call needed)."""
+    global global_nfl_week, global_nfl_week_last_update
+
+    # If never updated or very stale (>1 day), update once
+    if (global_nfl_week_last_update is None or
+        (datetime.now() - global_nfl_week_last_update).total_seconds() > 86400):
+        logger.info("NFL week cache is stale, updating...")
+        update_nfl_week()
+
+    return global_nfl_week
+
+def get_cached_league_users(league_id: str) -> List[Dict]:
+    """Get league users from cache, fetch if not available or stale."""
+    cached_data = app_state.league_users_cache.get(league_id)
+
+    # Check if cache is valid
+    if cached_data:
+        cache_time, users_data = cached_data
+        if time.time() - cache_time < LEAGUE_USERS_CACHE_SECONDS:
+            logger.debug(f"Using cached league users for {league_id}")
+            return users_data
+
+    # Cache miss or stale, fetch fresh data
+    logger.info(f"Fetching fresh league users for {league_id}")
+    try:
+        users_data = sleeper_client.get_league_users(league_id)
+        # Cache the result
+        app_state.league_users_cache[league_id] = (time.time(), users_data)
+        return users_data
+    except Exception as e:
+        logger.error(f"Failed to fetch league users for {league_id}: {e}")
+        # Return stale cache if available, empty list otherwise
+        if cached_data:
+            return cached_data[1]
+        return []
+
+def get_cached_league_info(league_id: str) -> Dict:
+    """Get league info from cache, fetch if not available or stale."""
+    cached_data = app_state.league_info_cache.get(league_id)
+
+    # Check if cache is valid
+    if cached_data:
+        cache_time, league_info = cached_data
+        if time.time() - cache_time < LEAGUE_INFO_CACHE_SECONDS:
+            logger.debug(f"Using cached league info for {league_id}")
+            return league_info
+
+    # Cache miss or stale, fetch fresh data
+    logger.info(f"Fetching fresh league info for {league_id}")
+    try:
+        league_info = sleeper_client.get_league_info(league_id)
+        # Cache the result
+        app_state.league_info_cache[league_id] = (time.time(), league_info)
+        return league_info
+    except Exception as e:
+        logger.error(f"Failed to fetch league info for {league_id}: {e}")
+        # Return stale cache if available, empty dict otherwise
+        if cached_data:
+            return cached_data[1]
+        return {"name": "Fantasy Football"}  # Fallback
+
+def get_cached_league_rosters(league_id: str) -> List[Dict]:
+    """Get league rosters from cache, fetch if not available or stale."""
+    cached_data = app_state.league_rosters_cache.get(league_id)
+
+    # Check if cache is valid
+    if cached_data:
+        cache_time, rosters_data = cached_data
+        if time.time() - cache_time < LEAGUE_ROSTERS_CACHE_SECONDS:
+            logger.debug(f"Using cached league rosters for {league_id}")
+            return rosters_data
+
+    # Cache miss or stale, fetch fresh data
+    logger.info(f"Fetching fresh league rosters for {league_id}")
+    try:
+        rosters_data = sleeper_client.get_league_rosters(league_id)
+        # Cache the result
+        app_state.league_rosters_cache[league_id] = (time.time(), rosters_data)
+        return rosters_data
+    except Exception as e:
+        logger.error(f"Failed to fetch league rosters for {league_id}: {e}")
+        # Return stale cache if available, empty list otherwise
+        if cached_data:
+            return cached_data[1]
+        return []
+
 def update_nfl_games():
     """Update the stored NFL games data."""
     try:
@@ -577,6 +897,9 @@ def update_nfl_games():
         app_state.nfl_games = games
         app_state.games_last_fetched = datetime.now()
         logger.info(f"Updated NFL games data: {len(games)} games stored")
+
+        # Also update NFL week since we're doing daily tasks
+        update_nfl_week()
     except Exception as e:
         logger.error(f"Failed to update NFL games: {e}")
 
@@ -853,7 +1176,7 @@ class LiveActivityManager:
             logger.exception(f"Failed to initialize APNS client: {e}")
             self.apns_client = None
 
-    async def send_live_activity_update(self, push_token: str, activity_data: Dict):
+    async def send_live_activity_update(self, push_token: str, activity_data: Dict, needs_alert: bool = False):
         """Send Live Activity update via APNS with retry logic. This coroutine must run on the apns_loop."""
         if not self.apns_client:
             logger.warning("APNS client not initialized - skipping send_live_activity_update")
@@ -869,6 +1192,14 @@ class LiveActivityManager:
                         "content-state": activity_data
                     }
                 }
+
+                # Add alert for big plays (3+ points)
+                if needs_alert and activity_data.get("message"):
+                    payload["aps"]["alert"] = {
+                        "title": "Big Play!",
+                        "body": activity_data["message"],
+                        "sound": "default"
+                    }
 
                 logger.info(f"APNS update attempt {attempt+1} to token {push_token[:16]}...")
                 request = NotificationRequest(
@@ -921,12 +1252,14 @@ class LiveActivityManager:
     async def get_comprehensive_activity_data(self, user_config: Dict) -> Dict:
         """Gather and return the activity data. Uses blocking HTTP so offloads to threads when needed."""
         try:
-            # Offload sleeper calls to thread so apns_loop isn't blocked
-            nfl_state = await asyncio.to_thread(sleeper_client.get_nfl_state)
-            current_week = nfl_state.get("week", 1) if isinstance(nfl_state, dict) else 1
+            # Get current week from cache (no API call needed!)
+            current_week = get_current_nfl_week()
 
+            # Fetch data - using cached functions where appropriate
             matchups = await asyncio.to_thread(sleeper_client.get_matchups, user_config["league_id"], current_week)
-            rosters = await asyncio.to_thread(sleeper_client.get_league_rosters, user_config["league_id"])
+            rosters = await asyncio.to_thread(get_cached_league_rosters, user_config["league_id"])
+            league_users = await asyncio.to_thread(get_cached_league_users, user_config["league_id"])
+            league_info = await asyncio.to_thread(get_cached_league_info, user_config["league_id"])
 
             # find user roster
             user_roster = None
@@ -937,13 +1270,15 @@ class LiveActivityManager:
                     break
 
             if not user_roster:
+                # Get league name even for fallback
+                fallback_league_name = league_info.get("name", "Fantasy Football")
                 return {
                     "totalPoints": 0.0,
                     "activePlayersCount": 0,
                     "teamName": "Your Team",
                     "opponentPoints": 0.0,
                     "opponentTeamName": "Opponent",
-                    "leagueName": "Fantasy Football",
+                    "leagueName": fallback_league_name,
                     "userID": user_config["user_id"],
                     "opponentUserID": "",
                     "gameStatus": "Live",
@@ -961,13 +1296,21 @@ class LiveActivityManager:
                     break
 
             if not user_matchup:
+                # Get league name and user info even for fallback
+                fallback_league_name = league_info.get("name", "Fantasy Football")
+                user_lookup = {user.get("user_id"): user for user in league_users}
+                user_info = user_lookup.get(user_config["user_id"], {})
+                fallback_user_name = (user_info.get("metadata", {}).get("team_name") or
+                                    user_info.get("display_name") or
+                                    user_info.get("username") or
+                                    f"Team {user_roster.get('roster_id', 'Unknown')}")
                 return {
                     "totalPoints": 0.0,
                     "activePlayersCount": len(user_roster.get("starters", [])),
-                    "teamName": f"Team {user_roster.get('roster_id', 'Unknown')}",
+                    "teamName": fallback_user_name,
                     "opponentPoints": 0.0,
                     "opponentTeamName": "Opponent",
-                    "leagueName": "Fantasy Football",
+                    "leagueName": fallback_league_name,
                     "userID": user_config["user_id"],
                     "opponentUserID": "",
                     "gameStatus": "Live",
@@ -993,26 +1336,32 @@ class LiveActivityManager:
                             break
                     break
 
-            # fetch user and opponent info (blocking HTTP) in threads
-            def fetch_user_info(uid):
-                try:
-                    resp = requests.get(f"https://api.sleeper.app/v1/user/{uid}", timeout=10)
-                    resp.raise_for_status()
-                    return resp.json()
-                except Exception:
-                    return {}
+            # Create lookup dict for user info from league users (much more efficient!)
+            user_lookup = {user.get("user_id"): user for user in league_users}
 
-            user_info = await asyncio.to_thread(fetch_user_info, user_config["user_id"])
+            # Get user info from league users
+            user_info = user_lookup.get(user_config["user_id"], {})
 
+            # Get opponent info from league users
             if opponent_roster:
                 opponent_owner_id = opponent_roster.get("owner_id")
                 if opponent_owner_id:
                     opponent_user_id = opponent_owner_id
-                    opponent_info = await asyncio.to_thread(fetch_user_info, opponent_owner_id)
-                    opponent_name = opponent_info.get("display_name") or opponent_info.get("username", opponent_name)
+                    opponent_info = user_lookup.get(opponent_owner_id, {})
+                    # Use team_name from metadata if available, otherwise display_name
+                    opponent_name = (opponent_info.get("metadata", {}).get("team_name") or
+                                   opponent_info.get("display_name") or
+                                   opponent_info.get("username", opponent_name))
 
             total_points = user_matchup.get("points", 0.0)
-            user_name = f"Team {user_roster.get('roster_id', 'Unknown')}"
+            # Use team_name from metadata if available, otherwise display_name
+            user_name = (user_info.get("metadata", {}).get("team_name") or
+                        user_info.get("display_name") or
+                        user_info.get("username") or
+                        f"Team {user_roster.get('roster_id', 'Unknown')}")
+
+            # Get actual league name
+            league_name = league_info.get("name", "Fantasy Football")
 
             # Get projected scores for user and opponent
             user_projected_score = 0.0
@@ -1047,7 +1396,7 @@ class LiveActivityManager:
                 "teamName": user_name,
                 "opponentPoints": opponent_points,
                 "opponentTeamName": opponent_name,
-                "leagueName": "Fantasy Football",
+                "leagueName": league_name,
                 "userID": user_config["user_id"],
                 "opponentUserID": opponent_user_id,
                 "gameStatus": "Live",
@@ -1174,8 +1523,18 @@ class LiveActivityManager:
 live_activity_manager = LiveActivityManager()
 
 # -----------------------
-# Background updater coroutine (runs on apns_loop)
+# Combined player and team score updater (runs on apns_loop)
 # -----------------------
+async def update_all_live_activities():
+    """Combined function that updates both player stats and team scores for all live activities"""
+    logger.info(f"Running combined player and team score update for {len(app_state.active_live_activities)} active activities")
+
+    # First update all player stats using the optimized manager
+    await optimized_player_manager.update_all_player_stats()
+
+    # Then update team scores (this is the old check_and_update_live_activities logic)
+    await check_and_update_live_activities()
+
 async def check_and_update_live_activities():
     logger.info(f"Checking for Live Activity updates... found {len(app_state.active_live_activities)} active activities")
 
@@ -1370,8 +1729,8 @@ def get_league_avatars(league_id):
                 logger.debug(f"Returning cached avatars for league {league_id}")
                 return jsonify({"avatars": avatars})
 
-        # Get league users directly from Sleeper API
-        users = sleeper_client.get_league_users(league_id)
+        # Get league users from cache (shares cache with comprehensive activity data)
+        users = get_cached_league_users(league_id)
         avatars = {}
 
         for user in users:
@@ -1407,52 +1766,7 @@ def get_league_avatars(league_id):
         logger.exception(f"Failed to get avatars for league {league_id}")
         return jsonify({"error": str(e)}), 400
 
-@app.route("/live-activity/start/<device_id>", methods=["POST"])
-def start_live_activity(device_id):
-    if device_id not in app_state.user_configs:
-        return jsonify({"error": "Device not registered"}), 404
 
-    user_config = app_state.user_configs[device_id]
-    push_to_start_token = app_state.push_to_start_tokens.get(device_id)
-
-    if push_to_start_token:
-        try:
-            # submit start coroutine to apns_loop using push-to-start token
-            submit_to_apns_loop(live_activity_manager.send_live_activity_start(push_to_start_token, user_config))
-            logger.info(f"Sent APNS start notification for device {device_id}")
-        except Exception:
-            logger.exception("Failed to send APNS start notification")
-    else:
-        logger.warning(f"No push-to-start token available for device {device_id}")
-
-    app_state.active_live_activities[device_id] = {
-        "user_config": user_config,
-        "started_at": datetime.now(),
-        "last_update": datetime.now()
-    }
-    return jsonify({"status": "success", "message": "Live Activity started"})
-
-@app.route("/live-activity/end/<device_id>", methods=["POST"])
-def end_live_activity(device_id):
-    live_activity_token = app_state.live_activity_tokens.get(device_id)
-    if live_activity_token:
-        try:
-            user_config = app_state.user_configs.get(device_id)
-            submit_to_apns_loop(live_activity_manager.send_live_activity_end(live_activity_token, user_config))
-            logger.info(f"Sent APNS end notification for device {device_id}")
-        except Exception:
-            logger.exception("Failed to send APNS end notification")
-    else:
-        logger.warning(f"No Live Activity token available for device {device_id}")
-
-    if device_id in app_state.active_live_activities:
-        del app_state.active_live_activities[device_id]
-    if device_id in app_state.last_scores:
-        del app_state.last_scores[device_id]
-    if device_id in app_state.live_activity_tokens:
-        del app_state.live_activity_tokens[device_id]
-
-    return jsonify({"status": "success", "message": "Live Activity ended"})
 
 @app.route("/live-activity/status/<device_id>", methods=["GET"])
 def get_live_activity_status(device_id):
@@ -1533,7 +1847,7 @@ def start_live_activity_by_id(device_id):
     push_to_start_token = app_state.push_to_start_tokens.get(device_id)
     if push_to_start_token:
         try:
-            submit_to_apns_loop(live_activity_manager.send_live_activity_start(push_to_start_token, user_config))
+            submit_to_apns_loop(live_activity_manager.send_live_activity_start(push_to_start_token, user_config, "Game starting soon"))
             logger.info(f"Sent APNS start notification for device {device_id}")
         except Exception:
             logger.exception("Failed to send APNS start notification")
@@ -1587,33 +1901,24 @@ def startup_tasks():
     except Exception:
         logger.exception("Failed to initialize APNS client on startup")
 
-    # Schedule the periodic update job, but submit coroutine to apns loop
-    def schedule_job_submit():
+    # Schedule the combined live activity update job
+    def schedule_combined_update():
         try:
-            submit_to_apns_loop(check_and_update_live_activities())
+            submit_to_apns_loop(update_all_live_activities())
         except Exception:
-            logger.exception("Failed to run scheduled check_and_update_live_activities")
+            logger.exception("Failed to run scheduled update_all_live_activities")
 
-    # Use APScheduler to call our submit function every minute
-    scheduler.add_job(func=schedule_job_submit, trigger="interval", minutes=1, id="live_activity_updates", next_run_time=datetime.now())
+    # Use APScheduler to call our combined update function every LIVE_ACTIVITY_UPDATE_INTERVAL
+    scheduler.add_job(func=schedule_combined_update, trigger="interval", seconds=LIVE_ACTIVITY_UPDATE_INTERVAL, id="live_activity_updates", next_run_time=datetime.now())
 
-    # Schedule daily NFL games fetch at 8 AM
-    scheduler.add_job(func=update_nfl_games, trigger="cron", hour=8, minute=0, id="daily_games_fetch")
+    # Schedule daily NFL games fetch at NFL_GAMES_REFRESH_HOUR AM
+    scheduler.add_job(func=update_nfl_games, trigger="cron", hour=NFL_GAMES_REFRESH_HOUR, minute=0, id="daily_games_fetch")
 
-    # Schedule daily NFL players fetch at 8 AM
-    scheduler.add_job(func=update_nfl_players, trigger="cron", hour=8, minute=5, id="daily_players_fetch")
+    # Schedule daily NFL players fetch at NFL_PLAYERS_REFRESH_HOUR AM
+    scheduler.add_job(func=update_nfl_players, trigger="cron", hour=NFL_PLAYERS_REFRESH_HOUR, minute=NFL_PLAYERS_REFRESH_MINUTE, id="daily_players_fetch")
 
-    # Schedule game start checker every 5 minutes
-    scheduler.add_job(func=check_and_start_live_activities, trigger="interval", minutes=5, id="game_start_checker")
-
-    # Schedule optimized player score updates every 30 seconds
-    def schedule_optimized_player_score_updates():
-        try:
-            submit_to_apns_loop(optimized_player_manager.update_all_player_stats())
-        except Exception:
-            logger.exception("Failed to run optimized player score updates")
-
-    scheduler.add_job(func=schedule_optimized_player_score_updates, trigger="interval", seconds=30, id="optimized_player_score_updates", next_run_time=datetime.now())
+    # Schedule game start checker every GAME_START_CHECK_INTERVAL
+    scheduler.add_job(func=check_and_start_live_activities, trigger="interval", seconds=GAME_START_CHECK_INTERVAL, id="game_start_checker")
 
     # Load players data on startup (from file if exists, otherwise fetch from API)
     load_players_on_startup()
@@ -1667,8 +1972,8 @@ def get_player_scores(device_id):
     if optimized_player_manager.last_fetch_time:
         cache_age_seconds = (datetime.now() - optimized_player_manager.last_fetch_time).total_seconds()
 
-    # If cache is empty or old (>60 seconds), fetch fresh data
-    if not optimized_player_manager.player_stats_cache or cache_age_seconds > 60:
+    # If cache is empty or old (>PLAYER_CACHE_MAX_AGE seconds), fetch fresh data
+    if not optimized_player_manager.player_stats_cache or cache_age_seconds > PLAYER_CACHE_MAX_AGE:
         try:
             logger.info(f"Cache empty or stale ({cache_age_seconds}s old), fetching fresh data for {device_id}")
             # Trigger immediate cache update
@@ -1711,7 +2016,7 @@ def get_all_player_scores():
         cache_age_seconds = (datetime.now() - optimized_player_manager.last_fetch_time).total_seconds()
 
     # Trigger cache update if needed
-    if not optimized_player_manager.player_stats_cache or cache_age_seconds > 60:
+    if not optimized_player_manager.player_stats_cache or cache_age_seconds > PLAYER_CACHE_MAX_AGE:
         try:
             logger.info(f"Cache empty or stale ({cache_age_seconds}s old), fetching fresh data for all devices")
             submit_to_apns_loop(optimized_player_manager.update_all_player_stats())

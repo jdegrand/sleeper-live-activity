@@ -30,7 +30,9 @@ extension SleeperLiveActivityAttributes.ContentState {
             opponentUserID: "446042a71cea6b2353e5a7ad7d2a259d",
             gameStatus: "Live",
             lastUpdate: Date(),
-            message: "Game is live!"
+            message: "🔥 Josh Allen +6.2 pts",
+            userProjectedScore: 92.3,
+            opponentProjectedScore: 88.7
         )
      }
 
@@ -46,7 +48,9 @@ extension SleeperLiveActivityAttributes.ContentState {
              opponentUserID: "446042a71cea6b2353e5a7ad7d2a259d",
              gameStatus: "Final",
              lastUpdate: Date(),
-             message: "Game completed!"
+             message: "⚡ Travis Kelce +8.4 pts",
+             userProjectedScore: 124.2,
+             opponentProjectedScore: 112.1
          )
      }
 }
@@ -97,7 +101,7 @@ struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
                     }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 }
                 DynamicIslandExpandedRegion(.center) {
-                    VStack(spacing: 6) {
+                    VStack(spacing: 2) {
                         Text("vs")
                             .font(.title)
                             .foregroundColor(.secondary)
@@ -105,6 +109,15 @@ struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
                             .foregroundColor(.orange)
                             .font(.title2)
                     }.frame(maxHeight: .infinity, alignment: .center)
+                    if let message = context.state.message {
+                        SharedMessageView(
+                            message: message,
+                            lastUpdate: context.state.lastUpdate,
+                            width: 180,
+                            alignment: .center,
+                            shouldRemoveEmoji: true
+                        )
+                    }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     
@@ -119,12 +132,14 @@ struct SleeperLiveActivityAppWidgetLiveActivity: Widget {
                     Text("\(context.state.totalPoints, specifier: "%.2f")")
                         .font(.caption)
                         .fontWeight(.semibold)
+                        .foregroundColor(.blue)
                 }
             } compactTrailing: {
                 HStack {
                     Text("\(context.state.opponentPoints, specifier: "%.2f")")
                         .font(.caption)
                         .fontWeight(.semibold)
+                        .foregroundColor(.red)
                     SharedAvatarView(
                         userID: context.state.opponentUserID,
                         placeholderColor: .red,

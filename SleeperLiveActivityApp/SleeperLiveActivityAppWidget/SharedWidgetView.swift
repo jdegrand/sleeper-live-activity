@@ -85,6 +85,16 @@ public struct SleeperWidgetView: View {
                 }
             }
 
+            // Display smart player notification if available
+            if let message = state.message {
+                SharedMessageView(
+                    message: message,
+                    lastUpdate: state.lastUpdate,
+                    alignment: .leading,
+                    shouldRemoveEmoji: true
+                )
+            }
+
             HStack {
                 Image(systemName: "clock")
                     .font(.caption2)
