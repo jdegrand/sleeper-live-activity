@@ -8,8 +8,19 @@
 import Foundation
 
 class SleeperAPIClient {
-    private let baseURL = "http://192.168.4.194:8000"
+    private let baseURL: String
     private let session = URLSession.shared
+
+    init() {
+        if let path = Bundle.main.path(forResource: "Info", ofType: "plist"),
+           let plist = NSDictionary(contentsOfFile: path),
+           let url = plist["API_BASE_URL"] as? String {
+            self.baseURL = url
+        } else {
+            // Fallback to localhost for development
+            self.baseURL = "http://localhost:8000"
+        }
+    }
     
     func registerUser(config: UserConfig) async throws {
         let url = URL(string: "\(baseURL)/register")!

@@ -6,5 +6,7 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<key>API_BASE_URL</key>
+	<string>http://192.168.4.194:8000</string>
 </dict>
 </plist>

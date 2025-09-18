@@ -203,6 +203,7 @@ curl -X POST http://localhost:8000/live-activity/start-by-id/test_device
 #### Option A: Cloud Hosting (Recommended)
 ```bash
 # Deploy to services like:
+# - AWS EC2 Lightsail (Recommended - simple & cost-effective)
 # - Heroku
 # - Railway
 # - DigitalOcean App Platform
@@ -215,7 +216,38 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY . .
 EXPOSE 8000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "main.py"]
+```
+
+#### AWS EC2 Lightsail Deployment (Detailed)
+```bash
+# 1. Create Lightsail instance (Ubuntu 22.04 LTS, $5/month minimum)
+# 2. Connect via SSH and install dependencies
+sudo apt update && sudo apt upgrade -y
+sudo apt install python3 python3-pip python3-venv nginx -y
+
+# 3. Clone your repository
+git clone https://github.com/yourusername/sleeper-live-activity.git
+cd sleeper-live-activity/SleeperLiveActivityApi
+
+# 4. Set up Python environment
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# 5. Configure environment variables
+cp .env.example .env
+# Edit .env with your APNS credentials
+
+# 6. Create systemd service for auto-restart
+sudo nano /etc/systemd/system/sleeper-api.service
+
+# 7. Configure nginx reverse proxy
+sudo nano /etc/nginx/sites-available/sleeper-api
+
+# 8. Enable and start services
+sudo systemctl enable sleeper-api nginx
+sudo systemctl start sleeper-api nginx
 ```
 
 #### Option B: VPS Deployment
@@ -321,6 +353,24 @@ print("Debug: \(message)")
 - **Daily**: Monitor API health and error rates
 - **Weekly**: Check Sleeper API changes and NFL schedule
 - **Seasonally**: Update for new NFL season data
+
+### Scheduled Tasks Information
+- **8:00 AM Daily**: NFL games data refresh (ESPN API)
+- **8:05 AM Daily**: NFL players data refresh (Sleeper API)
+- **Every 30 seconds**: Live Activity updates (when active)
+- **Every 5 minutes**: Game start detection
+
+**Important**: If your server starts after 8:00 AM, the system will:
+- ✅ **Immediately fetch games data on startup** (regardless of time)
+- ✅ **Load player data from cache** (players.json file)
+- ✅ **Continue normal operation** without waiting for next 8 AM
+- ⚠️ **Miss scheduled 8 AM refresh** but compensate with startup fetch
+
+**EC2 Lightsail Compatibility**: ✅ **Fully supported**
+- All dependencies (Python 3.8+, Flask, APScheduler) work perfectly
+- Background scheduler runs continuously
+- SystemD service ensures auto-restart on server reboot
+- Nginx handles SSL termination and reverse proxy
 
 ### Version Updates
 - Backend: Use semantic versioning

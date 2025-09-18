@@ -315,11 +315,16 @@ curl -X POST http://localhost:8000/players/refresh
 - **Development**: Set `use_sandbox=True` in `main.py` (line ~482)
 - **Production**: Set `use_sandbox=False` in `main.py` (line ~482)
 
-### Update Frequency
+### Update Frequency & Startup Behavior
 - **Combined Live Activity Updates**: Every 30 seconds (unified player and team scores)
 - **Game Start Checker**: Every 5 minutes
 - **NFL Games Refresh**: Daily at 8:00 AM
 - **NFL Players Refresh**: Daily at 8:05 AM
+
+**🚀 Startup Behavior**:
+- **Games data**: Fetched immediately on startup (regardless of time)
+- **Players data**: Loaded from cache (players.json) if available, otherwise fetched fresh
+- **8 AM Rule**: If server starts after 8 AM, scheduled refresh still works but startup fetch ensures immediate data availability
 
 ### Player Scoring Configuration
 - **GraphQL Endpoint**: Update `self.graphql_url` in `PlayerStatsClient` (line ~192)
