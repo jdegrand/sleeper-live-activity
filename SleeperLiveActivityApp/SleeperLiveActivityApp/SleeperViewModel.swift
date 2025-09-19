@@ -717,18 +717,16 @@ class SleeperViewModel: ObservableObject {
         print("📋 ACTIVITY_PUSH_TOKEN=\"\(tokenString)\"")
         print("📋 ===================================")
 
-        guard isConfigured else {
-            print("❌ Not configured, skipping token send")
-            return
-        }
+        // Send token immediately when received, even if not fully configured
+        // Server will associate it with device_id and update when user registers
 
         do {
             // Get the Live Activity push token (if available)
             let pushToken = await getPushToken() ?? ""
 
             let config = UserConfig(
-                userID: userID,
-                leagueID: leagueID,
+                userID: userID.isEmpty ? "PENDING" : userID,
+                leagueID: leagueID.isEmpty ? "PENDING" : leagueID,
                 pushToken: pushToken,
                 deviceID: deviceID,
                 pushToStartToken: tokenString

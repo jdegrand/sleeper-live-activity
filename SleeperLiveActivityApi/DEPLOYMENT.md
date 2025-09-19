@@ -220,34 +220,422 @@ CMD ["python", "main.py"]
 ```
 
 #### AWS EC2 Lightsail Deployment (Detailed)
-```bash
-# 1. Create Lightsail instance (Ubuntu 22.04 LTS, $5/month minimum)
-# 2. Connect via SSH and install dependencies
-sudo apt update && sudo apt upgrade -y
-sudo apt install python3 python3-pip python3-venv nginx -y
 
-# 3. Clone your repository
-git clone https://github.com/yourusername/sleeper-live-activity.git
+##### Prerequisites
+- AWS account with Lightsail access
+- Apple Developer account with APNS keys
+- SSH client
+- Domain name (optional, for SSL)
+
+##### Step 1: Create Lightsail Instance
+1. Go to AWS Lightsail console
+2. Click "Create instance"
+3. Select "Linux/Unix" platform
+4. Choose "Ubuntu 22.04 LTS"
+5. Select instance plan ($5/month minimum recommended)
+6. Create SSH key pair or use existing
+7. Name your instance (e.g., "sleeper-api")
+8. Click "Create instance"
+
+##### Step 2: Configure Networking & Security
+```bash
+# In Lightsail console, go to "Networking" tab
+# Add these firewall rules:
+# - SSH (22) - Restrict to your IP only
+# - HTTP (80) - Any IP (0.0.0.0/0)
+# - HTTPS (443) - Any IP (0.0.0.0/0)
+# - Custom TCP (8000) - Any IP (0.0.0.0/0) [TEMPORARY: Remove after Step 11]
+
+# Note your instance's public IP address
+```
+
+##### Step 3: Initial Server Security Hardening
+```bash
+# Connect via SSH
+ssh -i your-key.pem ubuntu@YOUR_PUBLIC_IP
+
+# Update system immediately
+sudo apt update && sudo apt upgrade -y
+
+# Install security tools
+sudo apt install fail2ban ufw -y
+
+# Configure UFW firewall
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw allow ssh
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw allow 8000/tcp  # TEMPORARY: For direct testing only, remove in Step 11
+sudo ufw --force enable
+
+# Note: Port 8000 is temporary for testing the app directly
+# Once nginx is configured as reverse proxy, we'll remove this rule
+# The app will only accept connections from localhost (127.0.0.1)
+
+# Configure fail2ban
+sudo cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local
+sudo systemctl enable fail2ban
+sudo systemctl start fail2ban
+```
+
+##### Step 4: Install Dependencies
+```bash
+# Install required packages
+sudo apt install python3 python3-pip python3-venv nginx git unattended-upgrades -y
+
+# Configure automatic security updates
+v```
+
+##### Step 5: Create Non-Root User (Security Best Practice)
+```bash
+# Create application user
+sudo adduser sleeper --disabled-password --gecos ""
+sudo usermod -aG sudo sleeper
+
+# Configure passwordless sudo for sleeper user
+sudo echo "sleeper ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/sleeper
+sudo chmod 440 /etc/sudoers.d/sleeper
+
+# Copy SSH keys so you can SSH directly as sleeper user
+sudo mkdir -p /home/sleeper/.ssh
+sudo cp ~/.ssh/authorized_keys /home/sleeper/.ssh/
+sudo chown -R sleeper:sleeper /home/sleeper/.ssh
+sudo chmod 700 /home/sleeper/.ssh
+sudo chmod 600 /home/sleeper/.ssh/authorized_keys
+
+# Now you can SSH directly as sleeper user:
+# ssh -i your-key.pem sleeper@YOUR_PUBLIC_IP
+
+# Disable root SSH access for security
+sudo vim /etc/ssh/sshd_config
+# Find and change: PermitRootLogin no
+# Find and change: PasswordAuthentication no
+# Save and restart SSH
+sudo systemctl restart ssh
+
+# Switch to application user
+sudo su - sleeper
+```
+
+##### Step 6: Deploy Application
+```bash
+# Clone repository as sleeper user
+git clone https://github.com/jdegrand/sleeper-live-activity.git
 cd sleeper-live-activity/SleeperLiveActivityApi
 
-# 4. Set up Python environment
+# Create virtual environment
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+```
 
-# 5. Configure environment variables
-cp .env.example .env
-# Edit .env with your APNS credentials
+##### Step 7: Secure Configuration
+```bash
+# Create secure environment file
+vim .env
 
-# 6. Create systemd service for auto-restart
-sudo nano /etc/systemd/system/sleeper-api.service
+# Add configuration with secure permissions:
+```
+```env
+ENVIRONMENT=production
+HOST=127.0.0.1  # Only bind to localhost (nginx proxy)
+PORT=8000
+LOG_LEVEL=INFO
 
-# 7. Configure nginx reverse proxy
-sudo nano /etc/nginx/sites-available/sleeper-api
+# APNS Configuration
+APNS_KEY_ID=your_key_id
+APNS_TEAM_ID=your_team_id
+APNS_BUNDLE_ID=com.yourcompany.sleeperliveactivity
+APNS_KEY_PATH=/home/sleeper/sleeper-live-activity/SleeperLiveActivityApi/AuthKey_KEYID.p8
+APNS_USE_SANDBOX=false
+```
 
-# 8. Enable and start services
+```bash
+# Secure environment file
+chmod 600 .env
+
+# Upload APNS key directly to API folder (use scp)
+# scp -i your-key.pem AuthKey_KEYID.p8 sleeper@YOUR_PUBLIC_IP:/home/sleeper/sleeper-live-activity/SleeperLiveActivityApi/
+# Or if already uploaded to /tmp:
+# sudo mv /tmp/AuthKey_KEYID.p8 /home/sleeper/sleeper-live-activity/SleeperLiveActivityApi/
+# sudo chown sleeper:sleeper /home/sleeper/sleeper-live-activity/SleeperLiveActivityApi/AuthKey_KEYID.p8
+chmod 600 AuthKey_KEYID.p8
+```
+
+##### Step 8: Create SystemD Service
+```bash
+# Create service file (as ubuntu user with sudo)
+exit  # Return to ubuntu user
+sudo vim /etc/systemd/system/sleeper-api.service
+```
+
+```ini
+[Unit]
+Description=Sleeper Live Activity API
+After=network.target
+
+[Service]
+Type=simple
+User=sleeper
+Group=sleeper
+WorkingDirectory=/home/sleeper/sleeper-live-activity/SleeperLiveActivityApi
+Environment=PATH=/home/sleeper/sleeper-live-activity/SleeperLiveActivityApi/venv/bin
+ExecStart=/home/sleeper/sleeper-live-activity/SleeperLiveActivityApi/venv/bin/python main.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Production security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/home/sleeper/sleeper-live-activity/SleeperLiveActivityApi
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
+```
+
+##### Step 9: Configure Nginx with Security Headers
+```bash
+# First, configure nginx security settings
+sudo vim /etc/nginx/nginx.conf
+# Find the http block and add these lines (without the # symbols):
+```
+
+Add these lines in the http block:
+```
+server_tokens off;
+client_max_body_size 1M;
+limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+```
+
+```bash
+
+# Now create the site config
+sudo vim /etc/nginx/sites-available/sleeper-api
+```
+
+```nginx
+server {
+    listen 80;
+    server_name YOUR_PUBLIC_IP;  # Replace with domain if you have one
+
+    # Security headers
+    add_header X-Frame-Options DENY;
+    add_header X-Content-Type-Options nosniff;
+    add_header X-XSS-Protection "1; mode=block";
+    add_header Referrer-Policy "strict-origin-when-cross-origin";
+    add_header Content-Security-Policy "default-src 'self'";
+
+    # Rate limiting
+    limit_req zone=api burst=20 nodelay;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Security
+        proxy_hide_header X-Powered-By;
+        proxy_set_header X-Forwarded-Host $host;
+
+        # Timeouts
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 30s;
+        proxy_read_timeout 30s;
+    }
+
+    # Block common attack paths
+    location ~ /\. {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+}
+```
+
+```bash
+# Enable site and test configuration
+sudo ln -s /etc/nginx/sites-available/sleeper-api /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t
+```
+
+##### Step 10: SSL/TLS Setup (Recommended)
+```bash
+# Install Certbot for Let's Encrypt
+sudo apt install certbot python3-certbot-nginx -y
+
+# If you have a domain name:
+sudo certbot --nginx -d yourdomain.com
+# Certbot will automatically update your nginx config for SSL
+
+# Or create self-signed certificate for IP access:
+sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    -keyout /etc/ssl/private/sleeper-selfsigned.key \
+    -out /etc/ssl/certs/sleeper-selfsigned.crt
+
+# For self-signed certificate, update nginx config:
+sudo vim /etc/nginx/sites-available/sleeper-api
+# Replace the server block with:
+```
+
+```nginx
+server {
+    listen 80;
+    server_name YOUR_PUBLIC_IP;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name YOUR_PUBLIC_IP;
+
+    ssl_certificate /etc/ssl/certs/sleeper-selfsigned.crt;
+    ssl_certificate_key /etc/ssl/private/sleeper-selfsigned.key;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # Security headers
+    add_header X-Frame-Options DENY;
+    add_header X-Content-Type-Options nosniff;
+    add_header X-XSS-Protection "1; mode=block";
+    add_header Referrer-Policy "strict-origin-when-cross-origin";
+    add_header Content-Security-Policy "default-src 'self'";
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # Rate limiting
+    limit_req zone=api burst=20 nodelay;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Security
+        proxy_hide_header X-Powered-By;
+        proxy_set_header X-Forwarded-Host $host;
+
+        # Timeouts
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 30s;
+        proxy_read_timeout 30s;
+    }
+
+    # Block common attack paths
+    location ~ /\. {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+}
+```
+
+```bash
+# Test and reload nginx
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+##### Step 11: Start and Enable Services
+```bash
+# Start services
 sudo systemctl enable sleeper-api nginx
 sudo systemctl start sleeper-api nginx
+
+# Check status
+sudo systemctl status sleeper-api
+sudo systemctl status nginx
+
+# Remove temporary firewall rule (port 8000 no longer needed)
+# App now only accepts connections from nginx on localhost
+sudo ufw delete allow 8000/tcp
+sudo ufw status  # Verify port 8000 is removed
+```
+
+##### Step 12: Security Monitoring Setup
+```bash
+# Install log monitoring
+sudo apt install logwatch -y
+# When prompted for mail server configuration:
+# - Select: "Local only"
+# - System mail name: use the default hostname (e.g., ip-172-26-10-93.us-west-2.compute.internal)
+
+# Configure log rotation
+sudo vim /etc/logrotate.d/sleeper-api
+```
+
+```
+/var/log/sleeper-api.log {
+    daily
+    missingok
+    rotate 7
+    compress
+    delaycompress
+    notifempty
+    copytruncate
+}
+```
+
+##### Step 13: Final Security Verification
+```bash
+# Test firewall status
+sudo ufw status verbose
+
+# Test fail2ban status
+sudo fail2ban-client status
+
+# Check for listening ports
+sudo apt install -y net-tools
+sudo netstat -tlnp
+
+# Test API endpoint (expect 301 redirect if SSL is configured)
+curl -I http://YOUR_PUBLIC_IP/
+# If you get 301 redirect, test HTTPS:
+curl -I -k https://YOUR_PUBLIC_IP/
+
+# Check logs
+sudo journalctl -u sleeper-api -f
+```
+
+##### Step 14: Backup and Monitoring
+```bash
+# Create backup script
+vim /home/sleeper/backup.sh
+```
+
+```bash
+#!/bin/bash
+# Backup script for Sleeper API
+tar -czf "/home/sleeper/backup-$(date +%Y%m%d).tar.gz" \
+    /home/sleeper/sleeper-live-activity \
+    /home/sleeper/.env \
+    /home/sleeper/apns
+```
+
+```bash
+chmod +x /home/sleeper/backup.sh
+
+# Add to crontab for weekly backups
+(crontab -l 2>/dev/null; echo "0 2 * * 0 /home/sleeper/backup.sh") | crontab -
 ```
 
 #### Option B: VPS Deployment
@@ -347,6 +735,73 @@ print("Debug: \(message)")
 - Validate server certificates
 - Implement certificate pinning for production
 
+## Security Hardening Checklist
+
+### Server Security
+- [ ] UFW firewall enabled with minimal open ports
+- [ ] Fail2ban configured for intrusion prevention
+- [ ] Automatic security updates enabled
+- [ ] Non-root user created for application
+- [ ] SSH access restricted to specific IPs
+- [ ] Strong SSH key authentication (disable password auth)
+- [ ] Regular security updates scheduled
+
+### Application Security
+- [ ] Environment variables properly secured (600 permissions)
+- [ ] APNS keys stored in secure directory (700/600 permissions)
+- [ ] Application runs as non-privileged user
+- [ ] SystemD service hardened with security options
+- [ ] Rate limiting configured in nginx
+- [ ] Security headers implemented
+- [ ] Log rotation configured
+- [ ] Regular backups scheduled
+
+### Network Security
+- [ ] SSL/TLS certificate configured
+- [ ] Security headers (HSTS, CSP, etc.) enabled
+- [ ] Rate limiting per IP address
+- [ ] Nginx security configurations applied
+- [ ] Unnecessary services disabled
+- [ ] Port scanning protection (fail2ban)
+
+### Monitoring & Maintenance
+- [ ] Log monitoring configured
+- [ ] Failed login attempt monitoring
+- [ ] Disk space monitoring
+- [ ] Service health monitoring
+- [ ] Regular security audit schedule
+- [ ] Incident response plan documented
+
+### Post-Deployment Security Verification
+```bash
+# Run these commands to verify security setup:
+
+# 1. Check firewall status
+sudo ufw status verbose
+
+# 2. Verify fail2ban is protecting SSH
+sudo fail2ban-client status sshd
+
+# 3. Check for unnecessary open ports
+sudo netstat -tlnp
+
+# 4. Verify SSL configuration (if domain configured)
+curl -I https://yourdomain.com
+
+# 5. Test rate limiting
+for i in {1..25}; do curl -s -o /dev/null -w "%{http_code}\n" http://YOUR_IP/; done
+
+# 6. Check service permissions
+ps aux | grep sleeper-api
+
+# 7. Verify file permissions
+ls -la /home/sleeper/.env
+ls -la /home/sleeper/apns/
+
+# 8. Check for security updates
+sudo apt list --upgradable
+```
+
 ## Support and Updates
 
 ### Maintenance Schedule
@@ -378,3 +833,91 @@ print("Debug: \(message)")
 - Coordinate updates for API compatibility
 
 This deployment guide ensures a smooth setup and operation of the Sleeper Live Activity system in production environments.
+
+## Switching Between Development and Production Modes
+
+### Switch to Development Mode (Sandbox APNS)
+```bash
+# 1. SSH to your server
+ssh -i your-key.pem ubuntu@YOUR_PUBLIC_IP
+
+# 2. Switch to sleeper user and edit environment
+sudo su - sleeper
+cd sleeper-live-activity/SleeperLiveActivityApi/
+vim .env
+
+# 3. Change APNS setting:
+# APNS_USE_SANDBOX=true
+
+# 4. Restart the service
+exit  # Back to ubuntu user
+sudo systemctl restart sleeper-api
+sudo systemctl status sleeper-api
+
+# 5. Verify the change in logs
+sudo journalctl -u sleeper-api --since "1 minute ago"
+```
+
+### Switch to Production Mode (Production APNS)
+```bash
+# 1. SSH to your server
+ssh -i your-key.pem ubuntu@YOUR_PUBLIC_IP
+
+# 2. Switch to sleeper user and edit environment
+sudo su - sleeper
+cd sleeper-live-activity/SleeperLiveActivityApi/
+vim .env
+
+# 3. Change APNS setting:
+# APNS_USE_SANDBOX=false
+
+# 4. Restart the service
+exit  # Back to ubuntu user
+sudo systemctl restart sleeper-api
+sudo systemctl status sleeper-api
+
+# 5. Verify the change in logs
+sudo journalctl -u sleeper-api --since "1 minute ago"
+```
+
+### iOS App Configuration
+Make sure your iOS app matches the server mode:
+
+#### For Development Testing:
+```swift
+// In your iOS app, use Debug configuration
+#if DEBUG
+let apnsEnvironment = "development"  // Matches APNS_USE_SANDBOX=true
+#else
+let apnsEnvironment = "production"
+#endif
+```
+
+#### Build Configuration in Xcode:
+- **Development**: Product → Scheme → Edit Scheme → Run → Debug
+- **Production**: Product → Scheme → Edit Scheme → Run → Release
+
+#### For Production:
+```swift
+// Build in Release mode for production APNS
+// Matches APNS_USE_SANDBOX=false on server
+```
+
+### Quick Mode Check
+```bash
+# Check current APNS mode
+ssh -i your-key.pem ubuntu@YOUR_PUBLIC_IP
+sudo su - sleeper
+cd sleeper-live-activity/SleeperLiveActivityApi/
+grep APNS_USE_SANDBOX .env
+
+# Check service status
+exit
+sudo systemctl status sleeper-api
+```
+
+### Important Notes:
+- **Development mode**: Use when testing with Xcode builds to physical device
+- **Production mode**: Use when deploying to TestFlight or App Store
+- **Always restart the service** after changing APNS mode
+- **iOS app build configuration** must match server APNS mode for push notifications to work
