@@ -182,8 +182,14 @@ struct ContentView: View {
                 .onDisappear {
                     // When onboarding sheet disappears and onboarding is completed,
                     // trigger data loading
-                    if !showingOnboarding && UserDefaults.standard.bool(forKey: "OnboardingCompleted") {
+                    let onboardingCompleted = UserDefaults.standard.bool(forKey: "OnboardingCompleted")
+                    print("🔍 Onboarding sheet disappeared - showingOnboarding: \(showingOnboarding), onboardingCompleted: \(onboardingCompleted)")
+
+                    if !showingOnboarding && onboardingCompleted {
+                        print("✅ Calling viewModel.onboardingCompleted()")
                         viewModel.onboardingCompleted()
+                    } else {
+                        print("❌ Not calling onboardingCompleted - conditions not met")
                     }
                 }
         }

@@ -13,13 +13,14 @@ public struct SleeperWidgetView: View {
     let state: SleeperLiveActivityAttributes.ContentState
     let leagueName: String
 
-    @State private var shouldShowMessage: Bool = true
-    @State private var timer: Timer?
 
     public init(state: SleeperLiveActivityAttributes.ContentState, leagueName: String = "Fantasy Football") {
         self.state = state
         self.leagueName = leagueName
     }
+
+    @State private var shouldShowMessage: Bool = true
+    @State private var timer: Timer?
 
     public var body: some View {
         VStack(spacing: 12) {

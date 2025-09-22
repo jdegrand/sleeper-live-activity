@@ -34,12 +34,14 @@ class SleeperViewModel: ObservableObject {
     private let apiClient = SleeperAPIClient()
     private var cancellables = Set<AnyCancellable>()
     @Published private(set) var activity: Activity<SleeperLiveActivityAttributes>?
-    
+
+    // Store push-to-start token until onboarding is completed
+    private var pendingPushToStartToken: Data?
+
     // Configuration keys
     private let usernameKey = "SleeperUsername"
     private let userIDKey = "SleeperUserID" // Cached user ID from username
     private let leagueIDKey = "SleeperLeagueID"
-    private let deviceIDKey = "SleeperDeviceID"
     
     init() {
         loadConfiguration()
@@ -133,7 +135,17 @@ class SleeperViewModel: ObservableObject {
     }
 
     func onboardingCompleted() {
-        // Called when onboarding is completed to start data fetching
+        // Reload configuration to get the latest values from UserDefaults
+        loadConfiguration()
+
+        // Always send pending push-to-start token if we have one, regardless of configuration state
+        if let pendingToken = pendingPushToStartToken {
+            Task {
+                await registerPushToStartTokenWithBackend(pendingToken)
+                pendingPushToStartToken = nil
+            }
+        }
+
         if isConfigured {
             Task {
                 await waitForPermissions()
@@ -142,6 +154,7 @@ class SleeperViewModel: ObservableObject {
                 if userID.isEmpty {
                     await resolveUsernameToUserID()
                 }
+
                 await fetchLeagueInfo()
                 await fetchLatestData()
 
@@ -533,23 +546,24 @@ class SleeperViewModel: ObservableObject {
     }
 
     private func getDeviceID() -> String {
-        // Use iOS's vendor identifier for consistent device ID across app launches
-        if let vendorID = UIDevice.current.identifierForVendor {
-            let deviceID = vendorID.uuidString
-            // Cache it in UserDefaults for reference, but always use the vendor ID
-            UserDefaults.standard.set(deviceID, forKey: deviceIDKey)
-            return deviceID
-        }
+        let keychainKey = "SleeperDeviceID"
 
-        // Fallback to cached UUID if vendor ID is unavailable (rare edge case)
-        if let cachedDeviceID = UserDefaults.standard.string(forKey: deviceIDKey) {
+        // First check if we have a device ID stored in Keychain (survives app deletion)
+        if let cachedDeviceID = KeychainHelper.shared.load(forKey: keychainKey) {
             return cachedDeviceID
         }
 
-        // Last resort: generate new UUID (should rarely happen)
-        let fallbackDeviceID = UUID().uuidString
-        UserDefaults.standard.set(fallbackDeviceID, forKey: deviceIDKey)
-        return fallbackDeviceID
+        // Try to use iOS's vendor identifier
+        let deviceID = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+
+        // Store in Keychain for persistence across app deletions
+        if KeychainHelper.shared.save(deviceID, forKey: keychainKey) {
+            print("📱 Device ID saved to Keychain: \(deviceID)")
+        } else {
+            print("⚠️ Failed to save device ID to Keychain")
+        }
+
+        return deviceID
     }
     
     private func registerWithBackend() async {
@@ -564,8 +578,8 @@ class SleeperViewModel: ObservableObject {
         print("🔑 Push Token: \(pushToken)")
 
         let config = UserConfig(
-            userID: userID,
-            leagueID: leagueID,
+            userID: userID.isEmpty ? nil : userID,
+            leagueID: leagueID.isEmpty ? nil : leagueID,
             pushToken: pushToken,
             deviceID: deviceID,
             pushToStartToken: nil
@@ -712,6 +726,7 @@ class SleeperViewModel: ObservableObject {
 
     @available(iOS 17.2, *)
     private func subscribeToPushToStartTokens() {
+        print("🔔 Starting subscription to push-to-start token updates...")
         Task {
             for await token in Activity<SleeperLiveActivityAttributes>.pushToStartTokenUpdates {
                 print("📱 Received push-to-start token: \(token)")
@@ -724,25 +739,34 @@ class SleeperViewModel: ObservableObject {
         let tokenString = token.map { String(format: "%02x", $0) }.joined()
         let deviceID = getDeviceID()
 
-        print("🚀 Sending push-to-start token to server: \(tokenString)")
+        print("🚀 Received push-to-start token: \(tokenString)")
         print("📋 COPY THIS TOKEN FOR YOUR TEST SCRIPT:")
         print("📋 ACTIVITY_PUSH_TOKEN=\"\(tokenString)\"")
         print("📋 ===================================")
 
-        // Only send token if onboarding is completed and we have valid configuration
+        // Send token immediately if onboarding is completed
         let onboardingCompleted = UserDefaults.standard.bool(forKey: "OnboardingCompleted")
-        guard onboardingCompleted && !userID.isEmpty && !leagueID.isEmpty else {
-            print("⚠️ Skipping push-to-start token registration - onboarding not completed or user not fully configured yet")
-            return
+        if onboardingCompleted && !userID.isEmpty && !leagueID.isEmpty {
+            await registerPushToStartTokenWithBackend(token)
+        } else {
+            print("⚠️ Storing push-to-start token - onboarding not completed or user not fully configured yet")
+            pendingPushToStartToken = token
         }
+    }
+
+    private func registerPushToStartTokenWithBackend(_ token: Data) async {
+        let tokenString = token.map { String(format: "%02x", $0) }.joined()
+        let deviceID = getDeviceID()
+
+        print("🚀 Sending push-to-start token to server: \(tokenString)")
 
         do {
             // Get the Live Activity push token (if available)
             let pushToken = await getPushToken() ?? ""
 
             let config = UserConfig(
-                userID: userID,
-                leagueID: leagueID,
+                userID: userID.isEmpty ? nil : userID,
+                leagueID: leagueID.isEmpty ? nil : leagueID,
                 pushToken: pushToken,
                 deviceID: deviceID,
                 pushToStartToken: tokenString
@@ -870,8 +894,8 @@ extension Notification.Name {
 
 // MARK: - Data Models
 struct UserConfig: Codable {
-    let userID: String
-    let leagueID: String
+    let userID: String?
+    let leagueID: String?
     let pushToken: String
     let deviceID: String
     let pushToStartToken: String?

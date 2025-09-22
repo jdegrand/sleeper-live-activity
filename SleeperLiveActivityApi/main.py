@@ -1904,13 +1904,14 @@ async def check_and_update_live_activities():
 def register_user():
     try:
         data = request.get_json()
-        user_id = data["user_id"]
-        league_id = data["league_id"]
+        user_id = data.get("user_id")
+        league_id = data.get("league_id")
         push_token = data["push_token"]
         device_id = data["device_id"]
 
-        # validate user exists (blocking) - still ok here
-        sleeper_client.get_user_info(user_id)
+        # Only validate user exists if user_id is provided
+        if user_id:
+            sleeper_client.get_user_info(user_id)
 
         # Get optional push-to-start token
         push_to_start_token = data.get("push_to_start_token")
