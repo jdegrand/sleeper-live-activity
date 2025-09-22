@@ -531,13 +531,23 @@ class SleeperViewModel: ObservableObject {
     }
 
     private func getDeviceID() -> String {
-        if let deviceID = UserDefaults.standard.string(forKey: deviceIDKey) {
+        // Use iOS's vendor identifier for consistent device ID across app launches
+        if let vendorID = UIDevice.current.identifierForVendor {
+            let deviceID = vendorID.uuidString
+            // Cache it in UserDefaults for reference, but always use the vendor ID
+            UserDefaults.standard.set(deviceID, forKey: deviceIDKey)
             return deviceID
         }
-        
-        let newDeviceID = UUID().uuidString
-        UserDefaults.standard.set(newDeviceID, forKey: deviceIDKey)
-        return newDeviceID
+
+        // Fallback to cached UUID if vendor ID is unavailable (rare edge case)
+        if let cachedDeviceID = UserDefaults.standard.string(forKey: deviceIDKey) {
+            return cachedDeviceID
+        }
+
+        // Last resort: generate new UUID (should rarely happen)
+        let fallbackDeviceID = UUID().uuidString
+        UserDefaults.standard.set(fallbackDeviceID, forKey: deviceIDKey)
+        return fallbackDeviceID
     }
     
     private func registerWithBackend() async {

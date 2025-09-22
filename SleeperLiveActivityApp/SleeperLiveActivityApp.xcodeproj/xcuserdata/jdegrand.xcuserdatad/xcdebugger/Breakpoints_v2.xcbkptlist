@@ -32,7 +32,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "643"
             endingLineNumber = "643"
-            landmarkName = "resolveUsernameToUserID()"
+            landmarkName = "getPushToken(for:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

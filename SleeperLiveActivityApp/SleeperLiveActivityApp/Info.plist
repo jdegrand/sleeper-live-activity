@@ -8,5 +8,7 @@
 	</array>
 	<key>API_BASE_URL</key>
 	<string>https://sleeper.jdegrand.me</string>
+	<key>USE_LOCALHOST</key>
+	<true/>
 </dict>
 </plist>

@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Any
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
+from functools import wraps
 
 # Async / APNS
 import asyncio
@@ -24,6 +25,7 @@ import aiohttp
 # =============================================================================
 LIVE_ACTIVITY_UPDATE_INTERVAL = 30     # Both player and team score updates
 GAME_START_CHECK_INTERVAL = 300        # NFL game start detection (5 minutes)
+GAME_END_CHECK_INTERVAL = 180          # NFL game end detection (3 minutes)
 NFL_GAMES_REFRESH_HOUR = 8             # Daily NFL games refresh (8 AM)
 NFL_PLAYERS_REFRESH_HOUR = 8           # Daily NFL players refresh (8:05 AM)
 NFL_PLAYERS_REFRESH_MINUTE = 5
@@ -45,6 +47,12 @@ from apscheduler.schedulers.background import BackgroundScheduler
 # Load environment variables
 load_dotenv()
 
+# API Key Configuration
+API_KEY = os.getenv("API_KEY")
+if not API_KEY:
+    logger = logging.getLogger(__name__)
+    logger.warning("No API_KEY found in environment variables. API will be unprotected!")
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -54,9 +62,36 @@ CORS(app, resources={
     r"/*": {
         "origins": ["*"],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"]
+        "allow_headers": ["Content-Type", "Authorization", "X-API-Key"]
     }
 })
+
+# API Key Authentication - Global Protection
+@app.before_request
+def require_api_key():
+    """Global API key authentication for all endpoints except health checks."""
+    # Skip auth if no API key is configured (development mode)
+    if not API_KEY:
+        return None
+
+    # Allow health check endpoints without auth
+    if request.endpoint in ['health', 'get_nfl_state']:
+        return None
+
+    # Allow OPTIONS requests (CORS preflight)
+    if request.method == 'OPTIONS':
+        return None
+
+    # Check for API key in headers
+    provided_key = request.headers.get('X-API-Key')
+    if not provided_key:
+        return jsonify({"error": "API key required. Provide X-API-Key header."}), 401
+
+    # Validate API key
+    if provided_key != API_KEY:
+        return jsonify({"error": "Invalid API key"}), 401
+
+    return None
 
 # -----------------------
 # Global application state
@@ -770,6 +805,7 @@ def fetch_nfl_games_from_espn() -> List[Dict]:
                     event_data = {
                         "date": event.get("date", ""),
                         "name": event.get("name", ""),
+                        "status": event.get("status", ""),
                         "competitors": []
                     }
 
@@ -989,6 +1025,103 @@ def load_players_on_startup():
     except Exception as e:
         logger.error(f"Failed to load players on startup: {e}")
 
+def get_users_with_players_in_games(games_starting_soon: List[Dict]) -> List[str]:
+    """Return device_ids of users who have players in starting games (optimized for multiple users)."""
+    try:
+        # 1. Extract teams playing once
+        teams_playing = set()
+        for game in games_starting_soon:
+            for competitor in game.get("competitors", []):
+                team_abbr = competitor.get("abbreviation", "")
+                if team_abbr:
+                    teams_playing.add(team_abbr)
+
+        if not teams_playing:
+            return []
+
+        logger.debug(f"Teams playing in starting games: {teams_playing}")
+
+        # 2. Group users by league to batch roster fetches
+        users_by_league = {}
+        for device_id, user_config in app_state.user_configs.items():
+            league_id = user_config.get("league_id")
+            if league_id:
+                users_by_league.setdefault(league_id, []).append((device_id, user_config))
+
+        users_to_notify = []
+
+        # 3. Process each league once
+        for league_id, league_users in users_by_league.items():
+            try:
+                rosters = get_cached_league_rosters(league_id)  # One call per league
+
+                # Get matchups for this league once
+                week = league_users[0][1].get("week", 1)  # All users in same league should have same week
+                matchups = sleeper_client.get_matchups(league_id, week)
+
+                # 4. Check each user in this league
+                for device_id, user_config in league_users:
+                    user_id = user_config.get("user_id")
+                    if not user_id:
+                        continue
+
+                    # Find user's roster
+                    user_roster = None
+                    for roster in rosters:
+                        if roster.get("owner_id") == user_id:
+                            user_roster = roster
+                            break
+
+                    if not user_roster:
+                        continue
+
+                    # Find opponent roster from matchups
+                    opponent_roster = None
+                    for matchup in matchups:
+                        if matchup.get("roster_id") == user_roster.get("roster_id"):
+                            # Found user's matchup, find opponent
+                            for opponent_matchup in matchups:
+                                if (opponent_matchup.get("matchup_id") == matchup.get("matchup_id") and
+                                    opponent_matchup.get("roster_id") != user_roster.get("roster_id")):
+                                    # Found opponent, get their roster
+                                    opponent_roster_id = opponent_matchup.get("roster_id")
+                                    for roster in rosters:
+                                        if roster.get("roster_id") == opponent_roster_id:
+                                            opponent_roster = roster
+                                            break
+                                    break
+                            break
+
+                    # Collect all player IDs from both user and opponent
+                    all_player_ids = []
+                    if user_roster and "starters" in user_roster:
+                        all_player_ids.extend(user_roster.get("starters", []))
+                    if opponent_roster and "starters" in opponent_roster:
+                        all_player_ids.extend(opponent_roster.get("starters", []))
+
+                    # Check if any players play for teams that are playing
+                    has_players_in_games = False
+                    for player_id in all_player_ids:
+                        if player_id in app_state.nfl_players:
+                            player_team = app_state.nfl_players[player_id].get("team", "")
+                            if player_team in teams_playing:
+                                has_players_in_games = True
+                                break
+
+                    if has_players_in_games:
+                        users_to_notify.append(device_id)
+                        logger.debug(f"User {device_id} has players in starting games")
+
+            except Exception as e:
+                logger.error(f"Error processing league {league_id}: {e}")
+
+        logger.info(f"Found {len(users_to_notify)} users with players in starting games out of {len(app_state.user_configs)} total users")
+        return users_to_notify
+
+    except Exception as e:
+        logger.error(f"Error in get_users_with_players_in_games: {e}")
+        return []
+
 def check_and_start_live_activities():
     """Check if any games are starting now and auto-start live activities."""
     try:
@@ -997,8 +1130,15 @@ def check_and_start_live_activities():
 
         # First, find all games starting soon
         games_starting_soon = []
+        game_names = []
+        has_live_games = False
+
         for game in app_state.nfl_games:
             try:
+                # Check for live games to manage ending scheduler
+                if game.get("status", "") == "in":
+                    has_live_games = True
+
                 # Parse game date
                 game_date_str = game.get("date", "")
                 if not game_date_str:
@@ -1010,18 +1150,25 @@ def check_and_start_live_activities():
                 time_diff = (game_date - current_time.replace(tzinfo=game_date.tzinfo)).total_seconds()
 
                 if 0 <= time_diff <= 300:  # Game starting in next 5 minutes
-                    games_starting_soon.append(game.get('name', 'Unknown Game'))
+                    games_starting_soon.append(game)  # Store full game object
+                    game_names.append(game.get('name', 'Unknown Game'))
 
             except Exception as e:
                 logger.error(f"Error processing game {game}: {e}")
 
-        # If we have games starting soon, start or update live activities with the message
+        # Manage the ending scheduler based on live games
+        manage_ending_scheduler(has_live_games)
+
+        # If we have games starting soon, filter users and notify only those with players in the games
         if games_starting_soon:
-            game_names_message = ", ".join(games_starting_soon)
+            game_names_message = ", ".join(game_names)
             logger.info(f"Games starting soon: {game_names_message}")
 
-            # Handle all configured users
-            for device_id, user_config in app_state.user_configs.items():
+            # Get only users who have players in these games
+            users_to_notify = get_users_with_players_in_games(games_starting_soon)
+
+            # Handle filtered users
+            for device_id in users_to_notify:
                 if device_id not in app_state.active_live_activities:
                     # Start new live activity
                     logger.info(f"Auto-starting live activity for device {device_id}")
@@ -1039,6 +1186,177 @@ def check_and_start_live_activities():
 
     except Exception as e:
         logger.error(f"Error in check_and_start_live_activities: {e}")
+
+def manage_ending_scheduler(has_live_games: bool):
+    """Dynamically start/stop the ending scheduler based on whether games are live."""
+    try:
+        from apscheduler.jobstores.base import JobLookupError
+
+        # Check if ending scheduler is currently running
+        try:
+            scheduler.get_job("game_end_checker")
+            ending_scheduler_exists = True
+        except JobLookupError:
+            ending_scheduler_exists = False
+
+        if has_live_games and not ending_scheduler_exists:
+            # Start the ending scheduler - games are live
+            logger.info("Live games detected, starting game ending scheduler")
+            scheduler.add_job(
+                func=check_and_end_live_activities,
+                trigger="interval",
+                seconds=GAME_END_CHECK_INTERVAL,
+                id="game_end_checker"
+            )
+        elif not has_live_games and ending_scheduler_exists:
+            # Stop the ending scheduler - no live games
+            logger.info("No live games, stopping game ending scheduler")
+            scheduler.remove_job("game_end_checker")
+
+    except Exception as e:
+        logger.error(f"Error managing ending scheduler: {e}")
+
+def check_live_games_on_startup():
+    """Check for live games on startup and initialize ending scheduler if needed."""
+    try:
+        has_live_games = False
+
+        for game in app_state.nfl_games:
+            if game.get("status", "") == "in":
+                has_live_games = True
+                break
+
+        if has_live_games:
+            logger.info("Live games detected on startup, starting game ending scheduler")
+            scheduler.add_job(
+                func=check_and_end_live_activities,
+                trigger="interval",
+                seconds=GAME_END_CHECK_INTERVAL,
+                id="game_end_checker"
+            )
+        else:
+            logger.info("No live games detected on startup")
+
+    except Exception as e:
+        logger.error(f"Error checking live games on startup: {e}")
+
+def get_users_to_end_live_activities() -> List[str]:
+    """Find users whose live activities should end (no players in live games). Optimized for multiple users."""
+    try:
+        # 1. Get teams from finished games (status: "post")
+        finished_teams = set()
+        live_teams = set()
+
+        for game in app_state.nfl_games:
+            status = game.get("status", "")
+            competitors = game.get("competitors", [])
+
+            for competitor in competitors:
+                team_abbr = competitor.get("abbreviation", "")
+                if team_abbr:
+                    if status == "post":
+                        finished_teams.add(team_abbr)
+                    elif status == "in":  # Live game
+                        live_teams.add(team_abbr)
+
+        logger.debug(f"Finished teams: {finished_teams}, Live teams: {live_teams}")
+
+        # 2. Group active users by league to batch API calls
+        users_by_league = {}
+        for device_id in app_state.active_live_activities.keys():
+            if device_id in app_state.user_configs:
+                user_config = app_state.user_configs[device_id]
+                league_id = user_config.get("league_id")
+                if league_id:
+                    users_by_league.setdefault(league_id, []).append((device_id, user_config))
+
+        users_to_end = []
+
+        # 3. Process each league once
+        for league_id, league_users in users_by_league.items():
+            try:
+                rosters = get_cached_league_rosters(league_id)  # One call per league
+                week = league_users[0][1].get("week", 1)
+                matchups = sleeper_client.get_matchups(league_id, week)
+
+                # 4. Check each user in this league
+                for device_id, user_config in league_users:
+                    user_id = user_config.get("user_id")
+                    if not user_id:
+                        continue
+
+                    # Find user's roster
+                    user_roster = None
+                    for roster in rosters:
+                        if roster.get("owner_id") == user_id:
+                            user_roster = roster
+                            break
+
+                    if not user_roster:
+                        continue
+
+                    # Find opponent roster
+                    opponent_roster = None
+                    for matchup in matchups:
+                        if matchup.get("roster_id") == user_roster.get("roster_id"):
+                            for opponent_matchup in matchups:
+                                if (opponent_matchup.get("matchup_id") == matchup.get("matchup_id") and
+                                    opponent_matchup.get("roster_id") != user_roster.get("roster_id")):
+                                    opponent_roster_id = opponent_matchup.get("roster_id")
+                                    for roster in rosters:
+                                        if roster.get("roster_id") == opponent_roster_id:
+                                            opponent_roster = roster
+                                            break
+                                    break
+                            break
+
+                    # Collect all player IDs from both user and opponent
+                    all_player_ids = []
+                    if user_roster and "starters" in user_roster:
+                        all_player_ids.extend(user_roster.get("starters", []))
+                    if opponent_roster and "starters" in opponent_roster:
+                        all_player_ids.extend(opponent_roster.get("starters", []))
+
+                    # Check if ALL players are from teams with finished games (no live games)
+                    has_live_players = False
+                    for player_id in all_player_ids:
+                        if player_id in app_state.nfl_players:
+                            player_team = app_state.nfl_players[player_id].get("team", "")
+                            if player_team in live_teams:
+                                has_live_players = True
+                                break
+
+                    # End live activity if no players have live games
+                    if not has_live_players:
+                        users_to_end.append(device_id)
+                        logger.debug(f"User {device_id} has no players in live games, marking for end")
+
+            except Exception as e:
+                logger.error(f"Error processing league {league_id} for ending: {e}")
+
+        logger.info(f"Found {len(users_to_end)} users to end live activities out of {len(app_state.active_live_activities)} active")
+        return users_to_end
+
+    except Exception as e:
+        logger.error(f"Error in get_users_to_end_live_activities: {e}")
+        return []
+
+def check_and_end_live_activities():
+    """Check if any live activities should end and end them."""
+    try:
+        logger.info("Checking for live activities to end")
+
+        users_to_end = get_users_to_end_live_activities()
+
+        for device_id in users_to_end:
+            try:
+                logger.info(f"Ending live activity for device {device_id}")
+                stop_live_activity_by_id(device_id)
+            except Exception as e:
+                logger.error(f"Failed to end live activity for {device_id}: {e}")
+
+    except Exception as e:
+        logger.error(f"Error in check_and_end_live_activities: {e}")
 
 def start_live_activity_for_device(device_id: str, game_message: str = ""):
     """Start live activity for a specific device (internal function)."""
@@ -1925,6 +2243,9 @@ def startup_tasks():
 
     # Fetch games immediately on startup
     update_nfl_games()
+
+    # Check for live games on startup and start ending scheduler if needed
+    check_live_games_on_startup()
 
     scheduler.start()
     logger.info("Startup tasks complete. Scheduler started with game monitoring.")

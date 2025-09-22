@@ -11,15 +11,56 @@ class SleeperAPIClient {
     private let baseURL: String
     private let session = URLSession.shared
 
+    // Lazy property to load API key when first accessed
+    private lazy var apiKey: String? = {
+        // Try to load from Config.plist (not committed to git)
+        if let path = Bundle.main.path(forResource: "Config", ofType: "plist"),
+           let plist = NSDictionary(contentsOfFile: path),
+           let key = plist["API_KEY"] as? String, !key.isEmpty {
+            return key
+        }
+
+        // If no config file or key, return nil (development mode)
+        print("⚠️ No API key found in Config.plist - running in development mode")
+        return nil
+    }()
+
     init() {
         if let path = Bundle.main.path(forResource: "Info", ofType: "plist"),
-           let plist = NSDictionary(contentsOfFile: path),
-           let url = plist["API_BASE_URL"] as? String {
-            self.baseURL = url
+           let plist = NSDictionary(contentsOfFile: path) {
+
+            // Check if we should use localhost for development
+            let useLocalhost = plist["USE_LOCALHOST"] as? Bool ?? false
+
+            if useLocalhost {
+                self.baseURL = "http://localhost:8000"
+                print("🔧 Development Mode: Using localhost")
+            } else if let url = plist["API_BASE_URL"] as? String {
+                self.baseURL = url
+                print("🌐 Production Mode: Using \(url)")
+            } else {
+                // Fallback to localhost if no URL specified
+                self.baseURL = "http://localhost:8000"
+                print("⚠️ No API_BASE_URL found, defaulting to localhost")
+            }
         } else {
-            // Fallback to localhost for development
+            // Fallback if Info.plist not found
             self.baseURL = "http://localhost:8000"
+            print("⚠️ Info.plist not found, defaulting to localhost")
         }
+    }
+
+    private func addAuthHeaders(to request: inout URLRequest) {
+        if let apiKey = apiKey {
+            request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
+        }
+    }
+
+    private func createAuthenticatedRequest(url: URL, method: String = "GET") -> URLRequest {
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        addAuthHeaders(to: &request)
+        return request
     }
     
     func registerUser(config: UserConfig) async throws {
@@ -27,12 +68,13 @@ class SleeperAPIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
+        addAuthHeaders(to: &request)
+
         let jsonData = try JSONEncoder().encode(config)
         request.httpBody = jsonData
-        
+
         let (_, response) = try await session.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
             throw APIError.registrationFailed
@@ -41,13 +83,14 @@ class SleeperAPIClient {
     
     func getUserInfo(username: String) async throws -> [String: Any] {
         let url = URL(string: "\(baseURL)/user/\(username)")!
-        let (data, response) = try await session.data(from: url)
-        
+        let request = createAuthenticatedRequest(url: url)
+        let (data, response) = try await session.data(for: request)
+
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
             throw APIError.fetchFailed
         }
-        
+
         return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
     }
     
@@ -149,8 +192,7 @@ class SleeperAPIClient {
     
     func startLiveActivity(deviceID: String) async throws {
         let url = URL(string: "\(baseURL)/live-activity/start-by-id/\(deviceID)")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
+        let request = createAuthenticatedRequest(url: url, method: "POST")
 
         let (_, response) = try await session.data(for: request)
 
@@ -162,8 +204,7 @@ class SleeperAPIClient {
     
     func endLiveActivity(deviceID: String) async throws {
         let url = URL(string: "\(baseURL)/live-activity/stop-by-id/\(deviceID)")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
+        let request = createAuthenticatedRequest(url: url, method: "POST")
 
         let (_, response) = try await session.data(for: request)
 
@@ -187,8 +228,7 @@ class SleeperAPIClient {
 
     func registerLiveActivityToken(deviceID: String, liveActivityToken: String, activityID: String) async throws {
         let url = URL(string: "\(baseURL)/register-live-activity-token")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
+        var request = createAuthenticatedRequest(url: url, method: "POST")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let payload: [String: Any] = [
