@@ -13,6 +13,9 @@ public struct SleeperWidgetView: View {
     let state: SleeperLiveActivityAttributes.ContentState
     let leagueName: String
 
+    @State private var shouldShowMessage: Bool = true
+    @State private var timer: Timer?
+
     public init(state: SleeperLiveActivityAttributes.ContentState, leagueName: String = "Fantasy Football") {
         self.state = state
         self.leagueName = leagueName
@@ -84,24 +87,24 @@ public struct SleeperWidgetView: View {
                     )
                 }
             }
-            // Display smart player notification if available
-            if let message = state.message {
+            // Display smart player notification if available, otherwise show updated time
+            if let message = state.message, shouldShowMessage && !message.isEmpty {
                 SharedMessageView(
                     message: message,
                     lastUpdate: state.lastUpdate,
                     alignment: .leading,
                     shouldRemoveEmoji: true
                 )
-            }
-
-            HStack {
-                Image(systemName: "clock")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                Text("Updated \(formatTime(state.lastUpdate))")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                Spacer()
+            } else {
+                HStack {
+                    Image(systemName: "clock")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Text("Updated \(formatTime(state.lastUpdate))")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
             }
         }
         .padding(16)
@@ -110,6 +113,33 @@ public struct SleeperWidgetView: View {
                 .fill(Color(.systemBackground))
                 .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
         )
+        .onAppear {
+            if state.message != nil {
+                startAutoDisappearTimer()
+            }
+        }
+        .onChange(of: state.message) { oldValue, newValue in
+            if oldValue != newValue && newValue != nil {
+                shouldShowMessage = true
+                startAutoDisappearTimer()
+            }
+        }
+        .onChange(of: state.lastUpdate) { oldValue, newValue in
+            if oldValue != newValue && state.message != nil {
+                shouldShowMessage = true
+                startAutoDisappearTimer()
+            }
+        }
+    }
+
+    private func startAutoDisappearTimer() {
+        timer?.invalidate()
+
+        timer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: false) { _ in
+            withAnimation(.easeOut(duration: 0.3)) {
+                shouldShowMessage = false
+            }
+        }
     }
 }
 
