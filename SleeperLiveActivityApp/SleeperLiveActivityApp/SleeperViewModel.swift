@@ -43,11 +43,13 @@ class SleeperViewModel: ObservableObject {
     
     init() {
         loadConfiguration()
+        // Start monitoring for live activity updates immediately
+        startMonitoringActivityUpdates()
+
+        // Always subscribe to push-to-start tokens but gate the sending based on onboarding status
         if #available(iOS 17.2, *) {
             subscribeToPushToStartTokens()
         }
-        // Start monitoring for live activity updates immediately
-        startMonitoringActivityUpdates()
     }
     
     
@@ -727,16 +729,20 @@ class SleeperViewModel: ObservableObject {
         print("📋 ACTIVITY_PUSH_TOKEN=\"\(tokenString)\"")
         print("📋 ===================================")
 
-        // Send token immediately when received, even if not fully configured
-        // Server will associate it with device_id and update when user registers
+        // Only send token if onboarding is completed and we have valid configuration
+        let onboardingCompleted = UserDefaults.standard.bool(forKey: "OnboardingCompleted")
+        guard onboardingCompleted && !userID.isEmpty && !leagueID.isEmpty else {
+            print("⚠️ Skipping push-to-start token registration - onboarding not completed or user not fully configured yet")
+            return
+        }
 
         do {
             // Get the Live Activity push token (if available)
             let pushToken = await getPushToken() ?? ""
 
             let config = UserConfig(
-                userID: userID.isEmpty ? "PENDING" : userID,
-                leagueID: leagueID.isEmpty ? "PENDING" : leagueID,
+                userID: userID,
+                leagueID: leagueID,
                 pushToken: pushToken,
                 deviceID: deviceID,
                 pushToStartToken: tokenString

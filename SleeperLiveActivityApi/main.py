@@ -75,7 +75,7 @@ def require_api_key():
         return None
 
     # Allow health check endpoints without auth
-    if request.endpoint in ['health', 'get_nfl_state']:
+    if request.endpoint in ['health_check', 'get_nfl_state']:
         return None
 
     # Allow OPTIONS requests (CORS preflight)

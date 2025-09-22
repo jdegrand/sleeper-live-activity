@@ -27,7 +27,13 @@ struct OnboardingView: View {
     @State private var networkTestAttempts = 0
     @State private var isCheckingPermissions = false
 
-    private let totalSteps = 4
+    private var totalSteps: Int {
+        #if DEBUG
+        return 4 // Debug: Welcome, Notifications, Network, Live Activities
+        #else
+        return 3 // Release: Welcome, Notifications, Live Activities (skip network step)
+        #endif
+    }
 
     var body: some View {
         NavigationView {
@@ -58,9 +64,17 @@ struct OnboardingView: View {
                     case 1:
                         notificationPermissionStep
                     case 2:
+                        #if DEBUG
                         networkPermissionStep
-                    case 3:
+                        #else
                         liveActivityPermissionStep
+                        #endif
+                    case 3:
+                        #if DEBUG
+                        liveActivityPermissionStep
+                        #else
+                        EmptyView()
+                        #endif
                     default:
                         EmptyView()
                     }
@@ -367,11 +381,21 @@ struct OnboardingView: View {
             // Always allow proceeding on step 1 so user can request permissions
             result = true
         case 2:
-            // Always allow proceeding on step 2 so user can test network
+            #if DEBUG
+            // Debug: Always allow proceeding on step 2 (network test)
             result = true
+            #else
+            // Release: Step 2 is Live Activities, always allow proceeding
+            result = true
+            #endif
         case 3:
-            // Always allow proceeding on step 3 so user can check settings
+            #if DEBUG
+            // Debug: Step 3 is Live Activities, always allow proceeding
             result = true
+            #else
+            // Release: No step 3
+            result = false
+            #endif
         default:
             result = false
         }
@@ -392,6 +416,7 @@ struct OnboardingView: View {
                 return isCheckingPermissions ? "Requesting..." : "Enable Notifications"
             }
         case 2:
+            #if DEBUG
             switch networkPermissionState {
             case .granted:
                 return "Next"
@@ -400,12 +425,26 @@ struct OnboardingView: View {
             case .unset:
                 return isCheckingPermissions ? "Testing..." : "Test Network"
             }
-        case 3:
+            #else
+            // Release: Step 2 is Live Activities
             if liveActivityPermissionGranted {
                 return "Complete Setup"
             } else {
                 return "Open Settings"
             }
+            #endif
+        case 3:
+            #if DEBUG
+            // Debug: Step 3 is Live Activities
+            if liveActivityPermissionGranted {
+                return "Complete Setup"
+            } else {
+                return "Open Settings"
+            }
+            #else
+            // Release: No step 3
+            return "Next"
+            #endif
         default:
             return "Next"
         }
@@ -426,6 +465,7 @@ struct OnboardingView: View {
                 requestNotificationPermission()
             }
         case 2:
+            #if DEBUG
             switch networkPermissionState {
             case .granted:
                 withAnimation {
@@ -436,14 +476,26 @@ struct OnboardingView: View {
             case .unset:
                 testNetworkPermission()
             }
-        case 3:
+            #else
+            // Release: Step 2 is Live Activities
             if liveActivityPermissionGranted {
-                // Complete onboarding regardless of other permission status
                 completeOnboarding()
             } else {
-                // Open Settings for Live Activities
                 openSettings()
             }
+            #endif
+        case 3:
+            #if DEBUG
+            // Debug: Step 3 is Live Activities
+            if liveActivityPermissionGranted {
+                completeOnboarding()
+            } else {
+                openSettings()
+            }
+            #else
+            // Release: No step 3
+            break
+            #endif
         default:
             break
         }

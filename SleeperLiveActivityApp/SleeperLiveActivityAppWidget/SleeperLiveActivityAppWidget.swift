@@ -58,9 +58,9 @@ struct SleeperLiveActivityAppWidgetEntryView: View {
                         .font(.title)
                         .fontWeight(.bold)
                 }
-                
+
                 Spacer()
-                
+
                 VStack(alignment: .trailing) {
                     Text(entry.state.opponentTeamName)
                         .font(.headline)

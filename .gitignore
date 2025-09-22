@@ -11,8 +11,9 @@
 *.pem
 AuthKey_*.p8
 
-# iOS Config files with secrets
-SleeperLiveActivityApp/SleeperLiveActivityApp/Config.plist
+# iOS Config files with secrets (working copies, not examples)
+SleeperLiveActivityApp/SleeperLiveActivityApp/Config-Debug.plist
+SleeperLiveActivityApp/SleeperLiveActivityApp/Config-Release.plist
 
 # Python
 __pycache__/

@@ -52,21 +52,11 @@
 			);
 			target = 308784B92E772AFD0029EF97 /* SleeperLiveActivityAppWidgetExtension */;
 		};
-		30A26BC02E791B2300542A22 /* Exceptions for "SleeperLiveActivityApp" folder in "SleeperLiveActivityApp" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = 308784A72E772AB90029EF97 /* SleeperLiveActivityApp */;
-		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		308784AA2E772AB90029EF97 /* SleeperLiveActivityApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				30A26BC02E791B2300542A22 /* Exceptions for "SleeperLiveActivityApp" folder in "SleeperLiveActivityApp" target */,
-			);
 			path = SleeperLiveActivityApp;
 			sourceTree = "<group>";
 		};
@@ -393,7 +383,7 @@
 				DEVELOPMENT_TEAM = 8AG9SQW5U6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = SleeperLiveActivityApp/Info.plist;
+				INFOPLIST_FILE = "SleeperLiveActivityApp/Info-Debug.plist";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -426,7 +416,7 @@
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 8AG9SQW5U6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = SleeperLiveActivityApp/Info.plist;
+				INFOPLIST_FILE = "SleeperLiveActivityApp/Info-Release.plist";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

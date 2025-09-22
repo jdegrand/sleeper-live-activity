@@ -13,40 +13,39 @@ class SleeperAPIClient {
 
     // Lazy property to load API key when first accessed
     private lazy var apiKey: String? = {
-        // Try to load from Config.plist (not committed to git)
-        if let path = Bundle.main.path(forResource: "Config", ofType: "plist"),
+        // Choose config file based on build configuration
+        let configFileName: String
+        #if DEBUG
+        configFileName = "Config-Debug"
+        print("🔧 Loading Debug configuration")
+        #else
+        configFileName = "Config-Release"
+        print("🚀 Loading Release configuration")
+        #endif
+
+        // Try to load from build-specific Config.plist
+        if let path = Bundle.main.path(forResource: configFileName, ofType: "plist"),
            let plist = NSDictionary(contentsOfFile: path),
            let key = plist["API_KEY"] as? String, !key.isEmpty {
+            print("🔑 API key loaded from \(configFileName).plist")
             return key
         }
 
         // If no config file or key, return nil (development mode)
-        print("⚠️ No API key found in Config.plist - running in development mode")
+        print("⚠️ No API key found in \(configFileName).plist - running without authentication")
         return nil
     }()
 
     init() {
         if let path = Bundle.main.path(forResource: "Info", ofType: "plist"),
-           let plist = NSDictionary(contentsOfFile: path) {
-
-            // Check if we should use localhost for development
-            let useLocalhost = plist["USE_LOCALHOST"] as? Bool ?? false
-
-            if useLocalhost {
-                self.baseURL = "http://localhost:8000"
-                print("🔧 Development Mode: Using localhost")
-            } else if let url = plist["API_BASE_URL"] as? String {
-                self.baseURL = url
-                print("🌐 Production Mode: Using \(url)")
-            } else {
-                // Fallback to localhost if no URL specified
-                self.baseURL = "http://localhost:8000"
-                print("⚠️ No API_BASE_URL found, defaulting to localhost")
-            }
+           let plist = NSDictionary(contentsOfFile: path),
+           let url = plist["API_BASE_URL"] as? String {
+            self.baseURL = url
+            print("📡 Using API Base URL: \(url)")
         } else {
-            // Fallback if Info.plist not found
+            // Fallback to localhost if no URL specified
             self.baseURL = "http://localhost:8000"
-            print("⚠️ Info.plist not found, defaulting to localhost")
+            print("⚠️ No API_BASE_URL found, defaulting to localhost")
         }
     }
 
@@ -96,7 +95,8 @@ class SleeperAPIClient {
     
     func getUserLeagues(userID: String, season: String = "2025") async throws -> [[String: Any]] {
         let url = URL(string: "\(baseURL)/user/\(userID)/leagues/\(season)")!
-        let (data, response) = try await session.data(from: url)
+        let request = createAuthenticatedRequest(url: url)
+        let (data, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
@@ -108,7 +108,8 @@ class SleeperAPIClient {
     
     func getLeagueRosters(leagueID: String) async throws -> [[String: Any]] {
         let url = URL(string: "\(baseURL)/league/\(leagueID)/rosters")!
-        let (data, response) = try await session.data(from: url)
+        let request = createAuthenticatedRequest(url: url)
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
@@ -120,7 +121,8 @@ class SleeperAPIClient {
 
     func getLeagueInfo(leagueID: String) async throws -> [String: Any] {
         let url = URL(string: "\(baseURL)/league/\(leagueID)")!
-        let (data, response) = try await session.data(from: url)
+        let request = createAuthenticatedRequest(url: url)
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
@@ -132,7 +134,8 @@ class SleeperAPIClient {
     
     func getMatchups(leagueID: String, week: Int) async throws -> [[String: Any]] {
         let url = URL(string: "\(baseURL)/league/\(leagueID)/matchups/\(week)")!
-        let (data, response) = try await session.data(from: url)
+        let request = createAuthenticatedRequest(url: url)
+        let (data, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
@@ -144,7 +147,8 @@ class SleeperAPIClient {
     
     func getNFLPlayers() async throws -> [String: Any] {
         let url = URL(string: "\(baseURL)/players/nfl")!
-        let (data, response) = try await session.data(from: url)
+        let request = createAuthenticatedRequest(url: url)
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
@@ -156,7 +160,8 @@ class SleeperAPIClient {
 
     func getUser(userID: String) async throws -> [String: Any] {
         let url = URL(string: "\(baseURL)/user/\(userID)")!
-        let (data, response) = try await session.data(from: url)
+        let request = createAuthenticatedRequest(url: url)
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
@@ -216,7 +221,8 @@ class SleeperAPIClient {
     
     func getLiveActivityStatus(deviceID: String) async throws -> [String: Any] {
         let url = URL(string: "\(baseURL)/live-activity/status/\(deviceID)")!
-        let (data, response) = try await session.data(from: url)
+        let request = createAuthenticatedRequest(url: url)
+        let (data, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
@@ -254,7 +260,8 @@ class SleeperAPIClient {
 
     func getLeagueAvatars(leagueID: String) async throws -> [String: String] {
         let url = URL(string: "\(baseURL)/league/\(leagueID)/avatars")!
-        let (data, response) = try await session.data(from: url)
+        let request = createAuthenticatedRequest(url: url)
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
@@ -267,7 +274,8 @@ class SleeperAPIClient {
 
     func getPlayerScores(deviceID: String) async throws -> [String: Any] {
         let url = URL(string: "\(baseURL)/player-scores/\(deviceID)")!
-        let (data, response) = try await session.data(from: url)
+        let request = createAuthenticatedRequest(url: url)
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {

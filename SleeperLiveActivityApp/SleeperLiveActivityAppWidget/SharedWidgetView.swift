@@ -84,7 +84,6 @@ public struct SleeperWidgetView: View {
                     )
                 }
             }
-
             // Display smart player notification if available
             if let message = state.message {
                 SharedMessageView(
