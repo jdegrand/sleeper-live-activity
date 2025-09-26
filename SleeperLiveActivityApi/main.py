@@ -1036,6 +1036,7 @@ def get_users_with_players_in_games(games_starting_soon: List[Dict]) -> List[str
                 if team_abbr:
                     teams_playing.add(team_abbr)
 
+        logger.info(f"DEBUG: Teams playing in starting games: {teams_playing}")
         if not teams_playing:
             return []
 
@@ -1101,10 +1102,15 @@ def get_users_with_players_in_games(games_starting_soon: List[Dict]) -> List[str
 
                     # Check if any players play for teams that are playing
                     has_players_in_games = False
+                    logger.debug(f"DEBUG: Checking {len(all_player_ids)} players for teams in {teams_playing}")
                     for player_id in all_player_ids:
                         if player_id in app_state.nfl_players:
                             player_team = app_state.nfl_players[player_id].get("team", "")
-                            if player_team in teams_playing:
+                            # Handle team abbreviation mismatch: Sleeper uses WAS, ESPN uses WSH
+                            normalized_team = "WSH" if player_team == "WAS" else player_team
+                            logger.debug(f"DEBUG: Player {player_id} team: {player_team} -> {normalized_team}")
+                            if normalized_team in teams_playing:
+                                logger.info(f"DEBUG: MATCH FOUND - Player {player_id} ({normalized_team}) in teams_playing {teams_playing}")
                                 has_players_in_games = True
                                 break
 
@@ -1322,7 +1328,9 @@ def get_users_to_end_live_activities() -> List[str]:
                     for player_id in all_player_ids:
                         if player_id in app_state.nfl_players:
                             player_team = app_state.nfl_players[player_id].get("team", "")
-                            if player_team in live_teams:
+                            # Handle team abbreviation mismatch: Sleeper uses WAS, ESPN uses WSH
+                            normalized_team = "WSH" if player_team == "WAS" else player_team
+                            if normalized_team in live_teams:
                                 has_live_players = True
                                 break
 
@@ -1357,6 +1365,46 @@ def check_and_end_live_activities():
 
     except Exception as e:
         logger.error(f"Error in check_and_end_live_activities: {e}")
+
+def cleanup_expired_live_activities():
+    """Clean up live activities that have exceeded their TTL (Time To Live)."""
+    try:
+        now = datetime.now()
+        current_day = now.weekday()  # 0=Monday, 6=Sunday
+
+        # Set TTL based on day of week
+        if current_day == 6:  # Sunday - big football day
+            max_age_hours = 16  # 6:30am-8:20pm + 2 hour buffer
+        elif current_day in [0, 3]:  # Monday, Thursday - some games
+            max_age_hours = 8
+        else:  # Other days - minimal games
+            max_age_hours = 6
+
+        max_age = timedelta(hours=max_age_hours)
+        logger.info(f"Running TTL cleanup with max age: {max_age_hours} hours")
+
+        expired_devices = []
+        for device_id, activity in app_state.active_live_activities.items():
+            started_at = activity.get("started_at")
+            if started_at and (now - started_at) > max_age:
+                expired_devices.append(device_id)
+                logger.info(f"Device {device_id} live activity expired (started {started_at}, age: {now - started_at})")
+
+        # Clean up expired activities
+        for device_id in expired_devices:
+            try:
+                logger.info(f"Cleaning up expired live activity for device {device_id}")
+                stop_live_activity_by_id(device_id)
+            except Exception as e:
+                logger.error(f"Failed to cleanup expired activity for {device_id}: {e}")
+
+        if expired_devices:
+            logger.info(f"TTL cleanup completed: removed {len(expired_devices)} expired activities")
+        else:
+            logger.debug("TTL cleanup completed: no expired activities found")
+
+    except Exception as e:
+        logger.error(f"Error in cleanup_expired_live_activities: {e}")
 
 def start_live_activity_for_device(device_id: str, game_message: str = ""):
     """Start live activity for a specific device (internal function)."""
@@ -2208,6 +2256,56 @@ def stop_live_activity_by_id(device_id):
         del app_state.live_activity_tokens[device_id]
     return jsonify({"status": "success", "message": f"Live Activity stopped for device {device_id}", "device_id": device_id})
 
+@app.route("/live-activity/heartbeat/<device_id>", methods=["POST"])
+def live_activity_heartbeat(device_id):
+    """Called when app is opened - verify live activity state synchronization"""
+    try:
+        data = request.get_json() or {}
+        ios_has_active_activity = data.get("has_active_activity", False)
+
+        backend_has_active = device_id in app_state.active_live_activities
+
+        logger.info(f"Heartbeat from {device_id}: iOS active={ios_has_active_activity}, Backend active={backend_has_active}")
+
+        # Case 1: iOS has activity but backend doesn't - register with backend
+        if ios_has_active_activity and not backend_has_active:
+            logger.info(f"iOS reports active activity but backend doesn't have it - registering for {device_id}")
+            if device_id in app_state.user_configs:
+                user_config = app_state.user_configs[device_id]
+                app_state.active_live_activities[device_id] = {
+                    "user_config": user_config,
+                    "started_at": datetime.now(),
+                    "last_update": datetime.now()
+                }
+                return jsonify({
+                    "status": "registered",
+                    "message": "Backend now tracking iOS activity"
+                })
+            else:
+                return jsonify({"error": "Device not configured"}), 400
+
+        # Case 2: Backend has activity but iOS doesn't - clean up backend
+        elif not ios_has_active_activity and backend_has_active:
+            logger.info(f"Backend thinks activity is active but iOS doesn't - cleaning up for {device_id}")
+            stop_live_activity_by_id(device_id)
+            return jsonify({
+                "status": "cleaned",
+                "message": "Backend cleaned up - no activity on iOS"
+            })
+
+        # Case 3: States already match
+        else:
+            status_msg = "active" if ios_has_active_activity else "inactive"
+            return jsonify({
+                "status": "synced",
+                "message": f"States match - both {status_msg}"
+            })
+
+    except Exception as e:
+        logger.exception(f"Error in live_activity_heartbeat for {device_id}: {e}")
+        return jsonify({"error": "Heartbeat failed", "details": str(e)}), 500
+
+
 # -----------------------
 # Startup tasks
 # -----------------------
@@ -2238,6 +2336,9 @@ def startup_tasks():
 
     # Schedule game start checker every GAME_START_CHECK_INTERVAL
     scheduler.add_job(func=check_and_start_live_activities, trigger="interval", seconds=GAME_START_CHECK_INTERVAL, id="game_start_checker")
+
+    # Schedule TTL cleanup for dismissed live activities every 30 minutes
+    scheduler.add_job(func=cleanup_expired_live_activities, trigger="interval", minutes=30, id="ttl_cleanup")
 
     # Load players data on startup (from file if exists, otherwise fetch from API)
     load_players_on_startup()

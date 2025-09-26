@@ -186,6 +186,25 @@ class SleeperViewModel: ObservableObject {
             self.activity = nil
             isLiveActivityActive = false
         }
+
+        // Send heartbeat to sync state with backend
+        Task {
+            await sendHeartbeatToBackend()
+        }
+    }
+
+    private func sendHeartbeatToBackend() async {
+        guard isConfigured else { return }
+
+        let deviceID = getDeviceID()
+        let hasActiveActivity = await MainActor.run { self.isLiveActivityActive }
+
+        do {
+            try await apiClient.sendHeartbeat(deviceID: deviceID, hasActiveActivity: hasActiveActivity)
+            print("✅ Heartbeat sent to backend successfully")
+        } catch {
+            print("❌ Failed to send heartbeat to backend: \(error)")
+        }
     }
     
     @MainActor
@@ -621,7 +640,7 @@ class SleeperViewModel: ObservableObject {
         Task {
             for await activity in Activity<SleeperLiveActivityAttributes>.activityUpdates {
                 print("Activity update received: \(activity.id) - \(activity.activityState)")
-                
+
                 // Update local state when activity changes
                 if activity.activityState == .ended || activity.activityState == .dismissed {
                     await MainActor.run {
@@ -647,7 +666,8 @@ class SleeperViewModel: ObservableObject {
             }
         }
     }
-    
+
+
     private func getPushToken(for activity: Activity<SleeperLiveActivityAttributes>) async -> String {
         print("🔗 Getting push token for activity: \(activity.id)")
 

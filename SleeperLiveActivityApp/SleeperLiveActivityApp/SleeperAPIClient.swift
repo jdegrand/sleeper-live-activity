@@ -223,14 +223,33 @@ class SleeperAPIClient {
         let url = URL(string: "\(baseURL)/live-activity/status/\(deviceID)")!
         let request = createAuthenticatedRequest(url: url)
         let (data, response) = try await session.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
             throw APIError.fetchFailed
         }
-        
+
         return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
     }
+
+    func sendHeartbeat(deviceID: String, hasActiveActivity: Bool) async throws {
+        let url = URL(string: "\(baseURL)/live-activity/heartbeat/\(deviceID)")!
+        var request = createAuthenticatedRequest(url: url, method: "POST")
+
+        let heartbeatData = [
+            "has_active_activity": hasActiveActivity
+        ] as [String: Any]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: heartbeatData)
+
+        let (_, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw APIError.fetchFailed
+        }
+    }
+
 
     func registerLiveActivityToken(deviceID: String, liveActivityToken: String, activityID: String) async throws {
         let url = URL(string: "\(baseURL)/register-live-activity-token")!
