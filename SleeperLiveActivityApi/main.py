@@ -1406,6 +1406,22 @@ def cleanup_expired_live_activities():
     except Exception as e:
         logger.error(f"Error in cleanup_expired_live_activities: {e}")
 
+def backup_devices():
+    """Daily backup of all device configurations."""
+    try:
+        # Call list_devices() to get the same data format as GET /devices
+        with app.test_request_context():
+            response = list_devices()
+            backup_data = response.get_json()
+
+        with open("devices_backup.json", "w") as f:
+            json.dump(backup_data, f, indent=2)
+
+        logger.info(f"Daily backup completed: {backup_data.get('total_registered', 0)} devices saved to devices_backup.json")
+
+    except Exception as e:
+        logger.error(f"Error in backup_devices: {e}")
+
 def start_live_activity_for_device(device_id: str, game_message: str = ""):
     """Start live activity for a specific device (internal function)."""
     if device_id not in app_state.user_configs:
@@ -2174,6 +2190,73 @@ def list_devices():
         "total_active_live_activities": len(app_state.active_live_activities)
     })
 
+@app.route("/devices", methods=["POST"])
+def import_devices():
+    """Import/restore devices from backup exported via GET /devices."""
+    try:
+        data = request.get_json()
+        devices = data.get("devices", [])
+
+        if not devices:
+            return jsonify({"error": "No devices provided in 'devices' array"}), 400
+
+        imported_count = 0
+        errors = []
+
+        for device in devices:
+            try:
+                device_id = device.get("device_id")
+                if not device_id:
+                    errors.append("Device missing device_id field")
+                    continue
+
+                # Restore user_config
+                user_id = device.get("user_id")
+                league_id = device.get("league_id")
+                if user_id and league_id:
+                    app_state.user_configs[device_id] = {
+                        "user_id": user_id,
+                        "league_id": league_id,
+                        "device_id": device_id
+                    }
+
+                # Restore tokens (only if they exist and are non-empty)
+                remote_token = device.get("remote_notification_token", "")
+                if remote_token:
+                    app_state.push_tokens[device_id] = remote_token
+
+                push_to_start = device.get("push_to_start_token", "")
+                if push_to_start:
+                    app_state.push_to_start_tokens[device_id] = push_to_start
+
+                # Clear live activity state (invalid after restart)
+                if device_id in app_state.active_live_activities:
+                    del app_state.active_live_activities[device_id]
+                if device_id in app_state.live_activity_tokens:
+                    del app_state.live_activity_tokens[device_id]
+
+                imported_count += 1
+                logger.info(f"Imported device {device_id}")
+
+            except Exception as e:
+                errors.append(f"Device {device.get('device_id', 'unknown')}: {str(e)}")
+                logger.error(f"Failed to import device: {e}")
+
+        response = {
+            "status": "success",
+            "imported": imported_count,
+            "total": len(devices)
+        }
+        if errors:
+            response["errors"] = errors
+
+        logger.info(f"Import completed: {imported_count}/{len(devices)} devices")
+        return jsonify(response)
+
+    except Exception as e:
+        logger.exception("Device import failed")
+        return jsonify({"error": str(e)}), 400
+
 @app.route("/devices/<device_id>", methods=["GET"])
 def get_device_details(device_id):
     if device_id not in app_state.user_configs:
@@ -2339,6 +2422,9 @@ def startup_tasks():
 
     # Schedule TTL cleanup for dismissed live activities every 30 minutes
     scheduler.add_job(func=cleanup_expired_live_activities, trigger="interval", minutes=30, id="ttl_cleanup")
+
+    # Schedule daily device backup at 3 AM
+    scheduler.add_job(func=backup_devices, trigger="cron", hour=3, minute=0, id="daily_device_backup")
 
     # Load players data on startup (from file if exists, otherwise fetch from API)
     load_players_on_startup()

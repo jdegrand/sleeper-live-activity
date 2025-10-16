@@ -118,6 +118,7 @@ The API will run on `http://localhost:8000`
 - `POST /register` - Register device for Live Activity updates
 - `POST /register-live-activity-token` - Register Live Activity token for push updates
 - `GET /devices` - List all registered devices and their status
+- `POST /devices` - Import/restore devices from backup
 - `GET /devices/{device_id}` - Get detailed information about a specific device
 
 ### Live Activity Control
@@ -154,10 +155,25 @@ The API will run on `http://localhost:8000`
 ### Device Management
 ```bash
 # List all registered devices
-curl -X GET http://localhost:8000/devices
+curl -X GET http://localhost:8000/devices \
+  -H "X-API-Key: your_api_key"
+
+# Export devices to backup file
+curl -X GET http://localhost:8000/devices \
+  -H "X-API-Key: your_api_key" \
+  > devices_backup.json
+
+# Import/restore devices from backup (e.g., after server restart)
+curl -X POST http://localhost:8000/devices \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your_api_key" \
+  -d @devices_backup.json
+
+# Note: Devices are automatically backed up daily at 3 AM to devices_backup.json
 
 # Get specific device details
-curl -X GET http://localhost:8000/devices/your_device_id
+curl -X GET http://localhost:8000/devices/your_device_id \
+  -H "X-API-Key: your_api_key"
 
 # Register a new device
 curl -X POST http://localhost:8000/register \
@@ -371,6 +387,7 @@ The dual-layer approach ensures reliable cleanup:
 - **Combined Live Activity Updates**: Every 30 seconds (unified player and team scores)
 - **Game Start Checker**: Every 5 minutes
 - **TTL Cleanup**: Every 30 minutes (checks for activities exceeding schedule-based TTL windows)
+- **Device Backup**: Daily at 3:00 AM (saves to `devices_backup.json`)
 - **NFL Games Refresh**: Daily at 8:00 AM
 - **NFL Players Refresh**: Daily at 8:05 AM
 
