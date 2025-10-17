@@ -170,6 +170,7 @@ curl -X POST http://localhost:8000/devices \
   -d @devices_backup.json
 
 # Note: Devices are automatically backed up daily at 3 AM to devices_backup.json
+# On server startup, devices are automatically restored from devices_backup.json if it exists
 
 # Get specific device details
 curl -X GET http://localhost:8000/devices/your_device_id \
@@ -392,9 +393,17 @@ The dual-layer approach ensures reliable cleanup:
 - **NFL Players Refresh**: Daily at 8:05 AM
 
 **🚀 Startup Behavior**:
+- **Device Restore**: Automatically loads registered devices from `devices_backup.json` if it exists
 - **Games data**: Fetched immediately on startup (regardless of time)
 - **Players data**: Loaded from cache (players.json) if available, otherwise fetched fresh
 - **8 AM Rule**: If server starts after 8 AM, scheduled refresh still works but startup fetch ensures immediate data availability
+
+**💾 Device Persistence**:
+The API maintains device registrations across server restarts through an automatic backup/restore system:
+1. **Daily Backup**: All registered devices backed up to `devices_backup.json` at 3 AM
+2. **Automatic Restore**: On server startup, devices are automatically restored from backup if file exists
+3. **Seamless Recovery**: Users don't need to re-register after server restarts
+4. **Manual Import**: Can also manually import devices via `POST /devices` endpoint
 
 ### Player Scoring Configuration
 - **GraphQL Endpoint**: Update `self.graphql_url` in `PlayerStatsClient` (line ~192)

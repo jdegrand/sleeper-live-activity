@@ -2392,7 +2392,65 @@ def live_activity_heartbeat(device_id):
 # -----------------------
 # Startup tasks
 # -----------------------
+def load_devices_from_backup():
+    """Load devices from backup file on startup if it exists."""
+    try:
+        if os.path.exists("devices_backup.json"):
+            with open("devices_backup.json", "r") as f:
+                backup_data = json.load(f)
+
+            devices = backup_data.get("devices", [])
+            if not devices:
+                logger.info("devices_backup.json found but contains no devices")
+                return
+
+            imported_count = 0
+            for device in devices:
+                try:
+                    device_id = device.get("device_id")
+                    if not device_id:
+                        continue
+
+                    # Restore user_config
+                    user_id = device.get("user_id")
+                    league_id = device.get("league_id")
+                    if user_id and league_id:
+                        app_state.user_configs[device_id] = {
+                            "user_id": user_id,
+                            "league_id": league_id,
+                            "device_id": device_id
+                        }
+
+                    # Restore tokens (only if they exist and are non-empty)
+                    remote_token = device.get("remote_notification_token", "")
+                    if remote_token:
+                        app_state.push_tokens[device_id] = remote_token
+
+                    push_to_start = device.get("push_to_start_token", "")
+                    if push_to_start:
+                        app_state.push_to_start_tokens[device_id] = push_to_start
+
+                    # Clear any stale live activity state (should be cleared anyway on startup)
+                    if device_id in app_state.active_live_activities:
+                        del app_state.active_live_activities[device_id]
+
+                    imported_count += 1
+
+                except Exception as e:
+                    logger.warning(f"Failed to import device from backup: {e}")
+                    continue
+
+            logger.info(f"Successfully loaded {imported_count} devices from devices_backup.json on startup")
+        else:
+            logger.info("No devices_backup.json found, starting with empty device registry")
+
+    except Exception as e:
+        logger.error(f"Error loading devices from backup on startup: {e}")
+
 def startup_tasks():
+    # Load devices from backup file first if it exists
+    load_devices_from_backup()
+
     # Start APNS loop/thread
     start_apns_thread()
     # Initialize APNS client on the APNS loop
