@@ -129,6 +129,7 @@
 				308784A42E772AB90029EF97 /* Sources */,
 				308784A52E772AB90029EF97 /* Frameworks */,
 				308784A62E772AB90029EF97 /* Resources */,
+				30DB85B92EA1F3A000BD4018 /* Inject API Key From Environment */,
 				308784D12E772AFE0029EF97 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
@@ -222,6 +223,30 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		30DB85B92EA1F3A000BD4018 /* Inject API Key From Environment */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/SleeperLiveActivityApp/Config-Release.plist.example",
+			);
+			name = "Inject API Key From Environment";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Inject API_KEY from environment variable into Config-Release.plist\nif [ \"${CONFIGURATION}\" == \"Release\" ]; then\n  CONFIG_FILE=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Config-Release.plist\"\n  SOURCE_CONFIG=\"${SRCROOT}/SleeperLiveActivityApp/Config-Release.plist\"\n  EXAMPLE_CONFIG=\"${SRCROOT}/SleeperLiveActivityApp/Config-Release.plist.example\"\n\n  # Check if local Config-Release.plist exists (takes priority)\n  if [ -f \"$SOURCE_CONFIG\" ]; then\n      echo \"ℹ️  Using API_KEY from local Config-Release.plist (not in git)\"\n      # File was already copied by Copy Bundle Resources phase, no injection needed\n  elif [ -n \"$API_KEY\" ]; then\n      # No local file but environment variable is set (Xcode Cloud scenario)\n      echo \"🔑 API_KEY environment variable detected\"\n      \n      # If Config-Release.plist doesn't exist in app bundle, copy from example\n      if [ ! -f \"$CONFIG_FILE\" ] && [ -f \"$EXAMPLE_CONFIG\" ]; then\n          echo \"📋 Using Config-Release.plist.example as template\"\n          cp \"$EXAMPLE_CONFIG\" \"$CONFIG_FILE\"\n      fi\n      \n      # Inject the API key into the app bundle file\n      /usr/libexec/PlistBuddy -c \"Set :API_KEY $API_KEY\" \"$CONFIG_FILE\" 2>/dev/null || \\\n        /usr/libexec/PlistBuddy -c \"Add :API_KEY string $API_KEY\" \"$CONFIG_FILE\"\n      echo \"✅ API_KEY injected from environment variable: ${API_KEY:0:10}...\"\n  else\n      # No local file and no environment variable\n      echo \"❌ ERROR: No API_KEY environment variable and no local Config-Release.plist found!\"\n      exit 1\n  fi\nfi\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		308784A42E772AB90029EF97 /* Sources */ = {
@@ -352,7 +377,7 @@
 				DEVELOPMENT_TEAM = 8AG9SQW5U6;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
